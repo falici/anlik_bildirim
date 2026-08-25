@@ -70,9 +70,14 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
     const masaText = masaNo ? `\n🪑 Masa No: ${masaNo}` : ''
     const ref = Date.now().toString(36).toUpperCase()
     const msg = `Merhaba, *${data.kurum.ad}* - *${data.event.ad}* etkinliği için bildirim:\n\n📋 Konu: ${kategorilerText}${masaText}${notText}\n\n📞 Numara: ${tel}\n🔖 Ref: #${ref}`
-    const hedef = (data.kurum as any).whatsapp_no?.replace(/\D/g, "")
-    if (!hedef) return
-    window.location.href = `https://wa.me/${hedef}?text=${encodeURIComponent(msg)}`
+    const hedef = '908502550939'
+    const waLink = document.createElement('a')
+    waLink.href = `https://wa.me/${hedef}?text=${encodeURIComponent(msg)}`
+    waLink.target = '_blank'
+    waLink.rel = 'noopener'
+    document.body.appendChild(waLink)
+    waLink.click()
+    document.body.removeChild(waLink)
   }
 
   if (step === 'loading') return (
