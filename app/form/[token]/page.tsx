@@ -15,6 +15,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
   const [seciliKategoriler, setSeciliKategoriler] = useState<string[]>([])
   const [digerAcik, setDigerAcik] = useState(false)
   const [digerNot, setDigerNot] = useState('')
+  const [masaNo, setMasaNo] = useState('')
   const [telefon, setTelefon] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -51,26 +52,29 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
     if (temiz.length < 10) { setFormError('Geçerli bir telefon numarası girin'); return }
     setSubmitting(true); setFormError('')
     const kategorilerGonder = [...seciliKategoriler, ...(digerAcik && digerNot.trim() ? ['Diğer'] : [])]
+    const notGonder = [masaNo ? `Masa: ${masaNo}` : '', digerNot].filter(Boolean).join(' | ')
     const res = await fetch('/api/form', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, telefon: temiz, kategoriler: kategorilerGonder, diger_not: digerNot || null })
+      body: JSON.stringify({ token, telefon: temiz, kategoriler: kategorilerGonder, diger_not: notGonder || null })
     })
     setSubmitting(false)
-    if (res.ok) { openWhatsApp(temiz, kategorilerGonder); setStep('success') }
+    if (res.ok) { openWhatsApp(temiz, kategorilerGonder, notGonder); setStep('success') }
     else { const d = await res.json(); setFormError(d.error) }
   }
 
-  const openWhatsApp = (tel: string, kategoriler: string[]) => {
+  const openWhatsApp = (tel: string, kategoriler: string[], not: string) => {
     if (!data) return
     const kategorilerText = kategoriler.join(', ')
-    const digerText = digerNot.trim() ? `\n\nNot: ${digerNot}` : ''
+    const notText = not ? `\n\nNot: ${not}` : ''
+    const masaText = masaNo ? `\n🪑 Masa No: ${masaNo}` : ''
     const ref = Date.now().toString(36).toUpperCase()
-    const msg = `Merhaba, *${data.kurum.ad}* - *${data.event.ad}* etkinliği için bildirim:\n\n📋 Konu: ${kategorilerText}${digerText}\n\n📞 Numara: ${tel}\n🔖 Ref: #${ref}`
+    const msg = `Merhaba, *${data.kurum.ad}* - *${data.event.ad}* etkinliği için bildirim:\n\n📋 Konu: ${kategorilerText}${masaText}${notText}\n\n📞 Numara: ${tel}\n🔖 Ref: #${ref}`
     const hedef = (data.kurum as any).whatsapp_no?.replace(/\D/g, '')
+    // api.whatsapp.com/send direkt konuşma açar, seçtirmez
     const waUrl = hedef
-      ? `https://wa.me/${hedef}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`
+      ? `https://api.whatsapp.com/send?phone=${hedef}&text=${encodeURIComponent(msg)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`
     window.open(waUrl, '_blank')
   }
 
@@ -125,7 +129,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
       </div>
 
       <div style={{ flex:1, padding:'24px 20px', maxWidth:420, margin:'0 auto', width:'100%' }}>
-        {/* Seçimler özeti */}
+        {/* Özet */}
         <div style={{ background:'#fff', borderRadius:16, border:'1.5px solid #ede9f8', padding:16, marginBottom:16 }}>
           <p style={{ fontSize:11, fontWeight:600, color:'#9e94b8', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:10 }}>Seçimleriniz</p>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
@@ -133,7 +137,8 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
               <span key={k} style={{ background:'#f0eeff', color:'#6d28d9', fontSize:12, fontWeight:600, padding:'5px 12px', borderRadius:20 }}>{k}</span>
             ))}
           </div>
-          {digerNot && <p style={{ fontSize:12, color:'#9e94b8', marginTop:10, fontStyle:'italic', borderTop:'0.5px solid #ede9f8', paddingTop:10 }}>"{digerNot}"</p>}
+          {masaNo && <p style={{ fontSize:12, color:'#9e94b8', marginTop:8 }}>🪑 Masa No: {masaNo}</p>}
+          {digerNot && <p style={{ fontSize:12, color:'#9e94b8', marginTop:6, fontStyle:'italic' }}>"{digerNot}"</p>}
         </div>
 
         {/* Telefon */}
@@ -145,7 +150,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
             onChange={e => setTelefon(e.target.value)}
             autoFocus
             placeholder="05XX XXX XX XX"
-            style={{ width:'100%', border:'1.5px solid #ede9f8', borderRadius:12, padding:'13px 14px', fontSize:16, fontWeight:500, color:'#1a1523', outline:'none', fontFamily:'inherit', background:'#faf8ff' }}
+            style={{ width:'100%', border:'1.5px solid #ede9f8', borderRadius:12, padding:'13px 14px', fontSize:16, fontWeight:500, color:'#1a1523', outline:'none', fontFamily:'inherit', background:'#faf8ff', boxSizing:'border-box' }}
           />
           <p style={{ fontSize:11, color:'#c4bdd8', marginTop:8 }}>WhatsApp üzerinden dönüş yapılacak.</p>
         </div>
@@ -162,9 +167,9 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
             Geri
           </button>
           <button onClick={submit} disabled={submitting}
-            style={{ flex:2, background:'#4c1d95', border:'none', borderRadius:14, padding:15, fontSize:15, fontWeight:700, color:'#ffffff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity: submitting ? 0.7 : 1 }}>
+            style={{ flex:2, background:'#4c1d95', border:'none', borderRadius:14, padding:15, fontSize:15, fontWeight:700, color:'#ffffff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity:submitting ? 0.7 : 1 }}>
             {submitting ? <Loader2 style={{ width:16, height:16, animation:'spin 1s linear infinite' }} /> : '💬'}
-            {submitting ? 'Gönderiliyor...' : "Gönder & WhatsApp'ı Aç"}
+            {submitting ? 'Gönderiliyor...' : "Gönder & WhatsApp"}
           </button>
         </div>
       </div>
@@ -176,7 +181,9 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
   const secilenSayi = seciliKategoriler.length + (digerAcik && digerNot.trim() ? 1 : 0)
 
   return (
-    <div style={{ minHeight:'100vh', background:'#f8f7ff', fontFamily:'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ minHeight:'100vh', background:'#f8f7ff', fontFamily:'system-ui, -apple-system, sans-serif', paddingBottom:32 }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+
       {/* Header */}
       <div style={{ background:'#fff', borderBottom:'0.5px solid #ede9f8', padding:'28px 22px 22px', position:'sticky', top:0, zIndex:10 }}>
         <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#f0eeff', borderRadius:20, padding:'5px 12px', marginBottom:14 }}>
@@ -191,11 +198,27 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
         </div>
       </div>
 
-      <div style={{ padding:'20px 18px 32px', maxWidth:420, margin:'0 auto' }}>
+      <div style={{ padding:'20px 18px 0', maxWidth:420, margin:'0 auto' }}>
+
+        {/* Masa no */}
+        <div style={{ background:'#fff', borderRadius:16, border:'1.5px solid #ede9f8', padding:'14px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:20 }}>🪑</span>
+          <div style={{ flex:1 }}>
+            <label style={{ display:'block', fontSize:11, fontWeight:600, color:'#9e94b8', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Masa Numarası</label>
+            <input
+              type="text"
+              value={masaNo}
+              onChange={e => setMasaNo(e.target.value)}
+              placeholder="Örn: 12"
+              style={{ width:'100%', border:'none', outline:'none', fontSize:15, fontWeight:500, color:'#1a1523', background:'transparent', fontFamily:'inherit' }}
+            />
+          </div>
+        </div>
+
         <p style={{ fontSize:12, fontWeight:600, color:'#9e94b8', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Nasıl yardımcı olalım?</p>
         <p style={{ fontSize:13, color:'#c4bdd8', marginBottom:16 }}>Birden fazla seçebilirsiniz</p>
 
-        {/* Grid */}
+        {/* Kategoriler Grid */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
           {kategorilerFiltered.map(k => {
             const selected = seciliKategoriler.includes(k.ad)
@@ -242,7 +265,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
               rows={3}
               autoFocus
               placeholder="Lütfen detaylı açıklayın..."
-              style={{ width:'100%', marginTop:8, background:'#fff', border:'1.5px solid #d5ceed', borderRadius:14, padding:'12px 14px', fontSize:13, color:'#1a1523', resize:'none', outline:'none', fontFamily:'inherit', lineHeight:1.5 }}
+              style={{ width:'100%', marginTop:8, background:'#fff', border:'1.5px solid #d5ceed', borderRadius:14, padding:'12px 14px', fontSize:13, color:'#1a1523', resize:'none', outline:'none', fontFamily:'inherit', lineHeight:1.5, boxSizing:'border-box', display:'block' }}
             />
           )}
         </div>
@@ -253,25 +276,25 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
           </div>
         )}
 
+        {/* Devam butonu — her zaman sayfanın akışında, kaymaz */}
         <button onClick={nextToPhone} disabled={secilenSayi === 0}
           style={{
             width:'100%', background:'#4c1d95', border:'none', borderRadius:16,
             padding:17, display:'flex', alignItems:'center', justifyContent:'center', gap:8,
             cursor: secilenSayi === 0 ? 'not-allowed' : 'pointer',
-            opacity: secilenSayi === 0 ? 0.35 : 1, transition:'all 0.15s'
+            opacity: secilenSayi === 0 ? 0.35 : 1, transition:'all 0.15s',
+            marginBottom:12
           }}>
           <span style={{ fontSize:15, fontWeight:700, color:'#ffffff' }}>Devam et</span>
           <ChevronRight style={{ width:17, height:17, color:'rgba(255,255,255,0.8)' }} />
         </button>
 
         {secilenSayi > 0 && (
-          <p style={{ textAlign:'center', fontSize:11, color:'#8b5cf6', marginTop:10, fontWeight:500 }}>{secilenSayi} konu seçildi</p>
+          <p style={{ textAlign:'center', fontSize:11, color:'#8b5cf6', marginBottom:8, fontWeight:500 }}>{secilenSayi} konu seçildi</p>
         )}
 
-        <p style={{ textAlign:'center', fontSize:11, color:'#d5ceed', marginTop:32 }}>{data.kurum.ad} · Anlık Bildirim Sistemi</p>
+        <p style={{ textAlign:'center', fontSize:11, color:'#d5ceed', marginTop:20 }}>{data.kurum.ad} · Anlık Bildirim Sistemi</p>
       </div>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }
