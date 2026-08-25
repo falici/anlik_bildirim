@@ -20,13 +20,13 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 })
 
   const body = await req.json()
-  const { ad, aciklama } = body
+  const { ad, aciklama, whatsapp_no } = body
 
   if (!ad?.trim()) return NextResponse.json({ error: 'Kurum adı zorunlu' }, { status: 400 })
 
   const { data, error } = await supabaseAdmin
     .from('kurumlar')
-    .insert({ ad: ad.trim(), aciklama: aciklama?.trim() })
+    .insert({ ad: ad.trim(), aciklama: aciklama?.trim(), whatsapp_no: whatsapp_no?.trim() })
     .select()
     .single()
 
@@ -39,11 +39,11 @@ export async function PUT(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 })
 
   const body = await req.json()
-  const { id, ad, aciklama, aktif } = body
+  const { id, ad, aciklama, aktif, whatsapp_no } = body
 
   const { data, error } = await supabaseAdmin
     .from('kurumlar')
-    .update({ ad, aciklama, aktif, guncelleme: new Date().toISOString() })
+    .update({ ad, aciklama, aktif, whatsapp_no, guncelleme: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
