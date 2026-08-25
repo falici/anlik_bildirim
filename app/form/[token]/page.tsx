@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, use } from 'react'
-import { CheckCircle2, Clock, Loader2, ChevronRight, Phone, ArrowLeft, AlertCircle } from 'lucide-react'
+import { CheckCircle2, Clock, Loader2, ChevronRight, ArrowLeft, AlertCircle, ChevronDown } from 'lucide-react'
 import { ActiveEventResponse } from '@/types'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -13,6 +13,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
   const [data, setData] = useState<ActiveEventResponse | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [seciliKategoriler, setSeciliKategoriler] = useState<string[]>([])
+  const [digerAcik, setDigerAcik] = useState(false)
   const [digerNot, setDigerNot] = useState('')
   const [telefon, setTelefon] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -33,8 +34,15 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
     )
   }
 
+  const allSelected = () => {
+    const cats = [...seciliKategoriler]
+    if (digerAcik && digerNot.trim()) cats.push('Diğer')
+    return cats
+  }
+
   const nextToPhone = () => {
-    if (seciliKategoriler.length === 0) { setFormError('En az bir konu seçin'); return }
+    const all = allSelected()
+    if (all.length === 0) { setFormError('En az bir konu seçin'); return }
     setFormError(''); setStep('phone')
   }
 
@@ -42,68 +50,59 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
     const temiz = telefon.replace(/\D/g, '')
     if (temiz.length < 10) { setFormError('Geçerli bir telefon numarası girin'); return }
     setSubmitting(true); setFormError('')
+    const kategorilerGonder = [...seciliKategoriler, ...(digerAcik && digerNot.trim() ? ['Diğer'] : [])]
     const res = await fetch('/api/form', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, telefon: temiz, kategoriler: seciliKategoriler, diger_not: digerNot || null })
+      body: JSON.stringify({ token, telefon: temiz, kategoriler: kategorilerGonder, diger_not: digerNot || null })
     })
     setSubmitting(false)
-    if (res.ok) { openWhatsApp(temiz); setStep('success') }
+    if (res.ok) { openWhatsApp(temiz, kategorilerGonder); setStep('success') }
     else { const d = await res.json(); setFormError(d.error) }
   }
 
-  const openWhatsApp = (tel: string) => {
+  const openWhatsApp = (tel: string, kategoriler: string[]) => {
     if (!data) return
-    const kategorilerText = seciliKategoriler.join(', ')
-    const digerText = digerNot ? `\n\nNot: ${digerNot}` : ''
+    const kategorilerText = kategoriler.join(', ')
+    const digerText = digerNot.trim() ? `\n\nNot: ${digerNot}` : ''
     const ref = Date.now().toString(36).toUpperCase()
-    const msg = `Merhaba, *${data.kurum.ad}* etkinliği için bildirimim:\n\n📋 ${kategorilerText}${digerText}\n\n📞 ${tel}\n🔖 #${ref}`
-    const hedef = (data.kurum as any).whatsapp_no
-      ? (data.kurum as any).whatsapp_no.replace(/\D/g, '')
-      : ''
+    const msg = `Merhaba, *${data.kurum.ad}* - *${data.event.ad}* etkinliği için bildirim:\n\n📋 Konu: ${kategorilerText}${digerText}\n\n📞 Numara: ${tel}\n🔖 Ref: #${ref}`
+    const hedef = (data.kurum as any).whatsapp_no?.replace(/\D/g, '')
     const waUrl = hedef
       ? `https://wa.me/${hedef}?text=${encodeURIComponent(msg)}`
       : `https://wa.me/?text=${encodeURIComponent(msg)}`
     window.open(waUrl, '_blank')
   }
 
-  // LOADING
   if (step === 'loading') return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 to-indigo-50">
-      <div className="text-center">
-        <div className="w-14 h-14 rounded-2xl bg-white shadow-lg flex items-center justify-center mx-auto mb-4">
-          <Loader2 className="w-6 h-6 text-violet-500 animate-spin" />
-        </div>
-        <p className="text-slate-400 text-sm">Yükleniyor...</p>
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8f7ff' }}>
+      <div style={{ textAlign:'center' }}>
+        <Loader2 style={{ width:28, height:28, color:'#8b5cf6', animation:'spin 1s linear infinite', margin:'0 auto 12px' }} />
+        <p style={{ fontSize:13, color:'#9e94b8' }}>Yükleniyor...</p>
       </div>
     </div>
   )
 
-  // NO EVENT
   if (step === 'no-event' || step === 'error') return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 to-indigo-50 p-6">
-      <div className="text-center max-w-xs">
-        <div className="w-20 h-20 rounded-3xl bg-white shadow-lg flex items-center justify-center mx-auto mb-6">
-          <Clock className="w-9 h-9 text-slate-300" />
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8f7ff', padding:24 }}>
+      <div style={{ textAlign:'center', maxWidth:280 }}>
+        <div style={{ width:72, height:72, background:'#fff', borderRadius:24, border:'1.5px solid #ede9f8', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+          <Clock style={{ width:32, height:32, color:'#c4bdd8' }} />
         </div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">Aktif etkinlik yok</h2>
-        <p className="text-slate-400 text-sm leading-relaxed">{errorMsg || 'Şu an için aktif bir etkinlik bulunamadı.'}</p>
+        <h2 style={{ fontSize:20, fontWeight:600, color:'#1a1523', marginBottom:8 }}>Aktif etkinlik yok</h2>
+        <p style={{ fontSize:13, color:'#9e94b8', lineHeight:1.6 }}>{errorMsg || 'Şu an için aktif bir etkinlik bulunamadı.'}</p>
       </div>
     </div>
   )
 
-  // SUCCESS
   if (step === 'success') return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 p-6">
-      <div className="text-center max-w-xs">
-        <div className="w-20 h-20 rounded-3xl bg-white shadow-lg flex items-center justify-center mx-auto mb-6">
-          <CheckCircle2 className="w-10 h-10 text-green-500" />
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f0fdf4', padding:24 }}>
+      <div style={{ textAlign:'center', maxWidth:280 }}>
+        <div style={{ width:72, height:72, background:'#fff', borderRadius:24, border:'1.5px solid #bbf7d0', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+          <CheckCircle2 style={{ width:32, height:32, color:'#22c55e' }} />
         </div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">Teşekkürler! 🎉</h2>
-        <p className="text-slate-500 text-sm leading-relaxed">Geri bildiriminiz alındı. En kısa sürede dönüş yapılacak.</p>
-        <div className="mt-6 bg-white rounded-2xl p-4 shadow-sm">
-          <p className="text-xs text-slate-400">WhatsApp açıldıysa mesajı göndererek takip edebilirsiniz.</p>
-        </div>
+        <h2 style={{ fontSize:20, fontWeight:600, color:'#1a1523', marginBottom:8 }}>Teşekkürler!</h2>
+        <p style={{ fontSize:13, color:'#6b7280', lineHeight:1.6 }}>Geri bildiriminiz alındı. WhatsApp açıldıysa mesajı göndererek takip edebilirsiniz.</p>
       </div>
     </div>
   )
@@ -112,159 +111,167 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
 
   // PHONE STEP
   if (step === 'phone') return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 to-indigo-50 flex flex-col">
-      <div className="bg-white/80 backdrop-blur border-b border-white/50 px-5 py-4">
+    <div style={{ minHeight:'100vh', background:'#f8f7ff', display:'flex', flexDirection:'column' }}>
+      <div style={{ background:'#fff', borderBottom:'0.5px solid #ede9f8', padding:'24px 20px 20px' }}>
         <button onClick={() => { setStep('form'); setFormError('') }}
-          className="flex items-center gap-2 text-slate-400 hover:text-slate-600 text-sm mb-3 transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Geri
+          style={{ display:'flex', alignItems:'center', gap:6, color:'#9e94b8', fontSize:13, background:'none', border:'none', cursor:'pointer', marginBottom:14, padding:0 }}>
+          <ArrowLeft style={{ width:16, height:16 }} /> Geri
         </button>
-        <p className="text-xs text-violet-400 font-semibold uppercase tracking-widest">{data.kurum.ad}</p>
-        <h1 className="font-bold text-slate-800 text-lg mt-0.5">{data.event.ad}</h1>
+        <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#f0eeff', borderRadius:20, padding:'4px 12px', marginBottom:12 }}>
+          <div style={{ width:7, height:7, background:'#22c55e', borderRadius:'50%' }} />
+          <span style={{ fontSize:11, fontWeight:600, color:'#7c5cbf', letterSpacing:'0.07em', textTransform:'uppercase' }}>{data.kurum.ad}</span>
+        </div>
+        <h1 style={{ fontSize:20, fontWeight:600, color:'#1a1523', lineHeight:1.25 }}>{data.event.ad}</h1>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center p-6 max-w-sm mx-auto w-full">
-        <div className="bg-white rounded-3xl shadow-sm border border-white p-5 mb-5">
-          <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-3">Seçimleriniz</p>
-          <div className="flex flex-wrap gap-2">
-            {seciliKategoriler.map(k => (
-              <span key={k} className="bg-violet-100 text-violet-700 text-xs px-3 py-1.5 rounded-full font-medium">{k}</span>
+      <div style={{ flex:1, padding:'24px 20px', maxWidth:420, margin:'0 auto', width:'100%' }}>
+        {/* Seçimler özeti */}
+        <div style={{ background:'#fff', borderRadius:16, border:'1.5px solid #ede9f8', padding:16, marginBottom:16 }}>
+          <p style={{ fontSize:11, fontWeight:600, color:'#9e94b8', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:10 }}>Seçimleriniz</p>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {allSelected().map(k => (
+              <span key={k} style={{ background:'#f0eeff', color:'#6d28d9', fontSize:12, fontWeight:600, padding:'5px 12px', borderRadius:20 }}>{k}</span>
             ))}
           </div>
-          {digerNot && <p className="text-xs text-slate-400 mt-3 italic border-t border-slate-50 pt-3">"{digerNot}"</p>}
+          {digerNot && <p style={{ fontSize:12, color:'#9e94b8', marginTop:10, fontStyle:'italic', borderTop:'0.5px solid #ede9f8', paddingTop:10 }}>"{digerNot}"</p>}
         </div>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-white p-5 mb-4">
-          <label className="block text-sm font-semibold text-slate-700 mb-3">
-            📞 Telefon Numaranız
-          </label>
+        {/* Telefon */}
+        <div style={{ background:'#fff', borderRadius:16, border:'1.5px solid #ede9f8', padding:16, marginBottom:12 }}>
+          <label style={{ display:'block', fontSize:13, fontWeight:600, color:'#6b6080', marginBottom:10 }}>Telefon numaranız</label>
           <input
             type="tel"
             value={telefon}
             onChange={e => setTelefon(e.target.value)}
-            className="w-full border-2 border-slate-100 focus:border-violet-300 rounded-2xl px-4 py-3.5 text-lg font-medium focus:outline-none transition-colors bg-slate-50 focus:bg-white"
-            placeholder="05XX XXX XX XX"
             autoFocus
+            placeholder="05XX XXX XX XX"
+            style={{ width:'100%', border:'1.5px solid #ede9f8', borderRadius:12, padding:'13px 14px', fontSize:16, fontWeight:500, color:'#1a1523', outline:'none', fontFamily:'inherit', background:'#faf8ff' }}
           />
-          <p className="text-xs text-slate-400 mt-2">Size WhatsApp üzerinden dönüş yapılacak.</p>
+          <p style={{ fontSize:11, color:'#c4bdd8', marginTop:8 }}>WhatsApp üzerinden dönüş yapılacak.</p>
         </div>
 
         {formError && (
-          <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl px-4 py-3 mb-4">
-            <AlertCircle className="w-4 h-4 shrink-0" /> {formError}
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:13, borderRadius:12, padding:'10px 14px', marginBottom:12 }}>
+            <AlertCircle style={{ width:15, height:15, flexShrink:0 }} /> {formError}
           </div>
         )}
 
-        <button onClick={submit} disabled={submitting}
-          className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 disabled:opacity-50 text-white py-4 rounded-2xl text-base font-bold shadow-lg shadow-green-200 transition-all flex items-center justify-center gap-2">
-          {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '💬'}
-          {submitting ? 'Gönderiliyor...' : 'Gönder & WhatsApp\'ı Aç'}
-        </button>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={() => { setStep('form'); setFormError('') }}
+            style={{ flex:1, background:'#fff', border:'1.5px solid #ede9f8', borderRadius:14, padding:15, fontSize:14, fontWeight:600, color:'#6b6080', cursor:'pointer' }}>
+            Geri
+          </button>
+          <button onClick={submit} disabled={submitting}
+            style={{ flex:2, background:'#4c1d95', border:'none', borderRadius:14, padding:15, fontSize:15, fontWeight:700, color:'#ffffff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? <Loader2 style={{ width:16, height:16, animation:'spin 1s linear infinite' }} /> : '💬'}
+            {submitting ? 'Gönderiliyor...' : "Gönder & WhatsApp'ı Aç"}
+          </button>
+        </div>
       </div>
     </div>
   )
 
   // MAIN FORM
+  const kategorilerFiltered = data.kategoriler.filter(k => k.ad !== 'Diğer')
+  const secilenSayi = seciliKategoriler.length + (digerAcik && digerNot.trim() ? 1 : 0)
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50 flex flex-col">
+    <div style={{ minHeight:'100vh', background:'#f8f7ff', fontFamily:'system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 px-5 py-5 sticky top-0 z-10">
-        <div className="flex items-center gap-3 max-w-sm mx-auto">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-md">
-            <span className="text-white text-lg">🎊</span>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-violet-400 font-semibold uppercase tracking-widest truncate">{data.kurum.ad}</p>
-            <h1 className="font-bold text-slate-800 text-base leading-tight truncate">{data.event.ad}</h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {format(new Date(data.event.baslangic), 'dd MMM, HH:mm', { locale: tr })} –{' '}
-              {format(new Date(data.event.bitis), 'HH:mm', { locale: tr })}
-              {data.event.konum && ` · ${data.event.konum}`}
-            </p>
-          </div>
+      <div style={{ background:'#fff', borderBottom:'0.5px solid #ede9f8', padding:'28px 22px 22px', position:'sticky', top:0, zIndex:10 }}>
+        <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#f0eeff', borderRadius:20, padding:'5px 12px', marginBottom:14 }}>
+          <div style={{ width:7, height:7, background:'#22c55e', borderRadius:'50%' }} />
+          <span style={{ fontSize:11, fontWeight:600, color:'#7c5cbf', letterSpacing:'0.07em', textTransform:'uppercase' }}>{data.kurum.ad}</span>
+        </div>
+        <h1 style={{ fontSize:21, fontWeight:600, color:'#1a1523', lineHeight:1.25, marginBottom:10, letterSpacing:'-0.02em' }}>{data.event.ad}</h1>
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#9e94b8' }}>
+          <span>📅</span>
+          {format(new Date(data.event.baslangic), 'dd MMM · HH:mm', { locale: tr })} – {format(new Date(data.event.bitis), 'HH:mm', { locale: tr })}
+          {data.event.konum && <><span style={{ color:'#d5ceed' }}>·</span><span>📍 {data.event.konum}</span></>}
         </div>
       </div>
 
-      <div className="flex-1 p-5 max-w-sm mx-auto w-full">
-        {/* Başlık */}
-        <div className="mb-6 mt-2">
-          <h2 className="text-xl font-bold text-slate-800">Nasıl yardımcı olalım?</h2>
-          <p className="text-slate-400 text-sm mt-1">Birden fazla seçebilirsiniz.</p>
-        </div>
+      <div style={{ padding:'20px 18px 32px', maxWidth:420, margin:'0 auto' }}>
+        <p style={{ fontSize:12, fontWeight:600, color:'#9e94b8', letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:4 }}>Nasıl yardımcı olalım?</p>
+        <p style={{ fontSize:13, color:'#c4bdd8', marginBottom:16 }}>Birden fazla seçebilirsiniz</p>
 
-        {/* Kategoriler Grid */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {data.kategoriler.filter(k => k.ad !== 'Diğer').map(k => {
+        {/* Grid */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+          {kategorilerFiltered.map(k => {
             const selected = seciliKategoriler.includes(k.ad)
             return (
               <button key={k.id} onClick={() => toggleKategori(k.ad)}
-                className={`relative flex flex-col items-center justify-center gap-2.5 p-5 rounded-3xl border-2 transition-all duration-200 text-center
-                  ${selected
-                    ? 'border-violet-400 bg-white shadow-lg shadow-violet-100 scale-[0.98]'
-                    : 'border-transparent bg-white/70 hover:bg-white hover:shadow-md'}`}>
+                style={{
+                  background: selected ? '#faf8ff' : '#fff',
+                  border: selected ? '1.5px solid #8b5cf6' : '1.5px solid #ede9f8',
+                  borderRadius:18, padding:'18px 10px 14px',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:9,
+                  cursor:'pointer', position:'relative',
+                  boxShadow: selected ? '0 0 0 3px rgba(139,92,246,0.1)' : '0 1px 4px rgba(124,92,191,0.04)',
+                  transition:'all 0.15s'
+                }}>
                 {selected && (
-                  <div className="absolute top-3 right-3 w-5 h-5 bg-violet-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">✓</span>
+                  <div style={{ position:'absolute', top:10, right:10, width:18, height:18, background:'#8b5cf6', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <span style={{ color:'#fff', fontSize:10, fontWeight:700 }}>✓</span>
                   </div>
                 )}
-                <span className="text-3xl">{k.ikon}</span>
-                <span className={`text-xs font-semibold leading-tight ${selected ? 'text-violet-700' : 'text-slate-600'}`}>
-                  {k.ad}
-                </span>
+                <span style={{ fontSize:26 }}>{k.ikon}</span>
+                <span style={{ fontSize:11, fontWeight:600, color: selected ? '#6d28d9' : '#6b6080', textAlign:'center', lineHeight:1.35 }}>{k.ad}</span>
               </button>
             )
           })}
         </div>
 
-        {/* Diğer butonu */}
-        <button onClick={() => toggleKategori('Diğer')}
-          className={`w-full flex items-center gap-3 p-4 rounded-2xl border-2 transition-all mb-3
-            ${seciliKategoriler.includes('Diğer')
-              ? 'border-violet-400 bg-white shadow-md'
-              : 'border-dashed border-slate-200 bg-white/50 hover:bg-white'}`}>
-          <span className="text-2xl">💬</span>
-          <span className={`text-sm font-semibold ${seciliKategoriler.includes('Diğer') ? 'text-violet-700' : 'text-slate-500'}`}>
-            Diğer — açıklama yazmak istiyorum
-          </span>
-          {seciliKategoriler.includes('Diğer') && (
-            <div className="ml-auto w-5 h-5 bg-violet-500 rounded-full flex items-center justify-center shrink-0">
-              <span className="text-white text-xs font-bold">✓</span>
-            </div>
+        {/* Diğer */}
+        <div style={{ marginBottom:16 }}>
+          <button onClick={() => setDigerAcik(!digerAcik)}
+            style={{
+              width:'100%', background: digerAcik ? '#faf8ff' : '#fff',
+              border: digerAcik ? '1.5px solid #8b5cf6' : '1.5px dashed #d5ceed',
+              borderRadius:16, padding:'14px 16px',
+              display:'flex', alignItems:'center', gap:10, cursor:'pointer', transition:'all 0.15s'
+            }}>
+            <span style={{ fontSize:20 }}>💬</span>
+            <span style={{ fontSize:13, color: digerAcik ? '#6d28d9' : '#9e94b8', fontWeight:500 }}>Diğer — not eklemek istiyorum</span>
+            <ChevronDown style={{ width:14, height:14, color:'#c4bdd8', marginLeft:'auto', transform: digerAcik ? 'rotate(180deg)' : 'rotate(0deg)', transition:'transform 0.2s' }} />
+          </button>
+          {digerAcik && (
+            <textarea
+              value={digerNot}
+              onChange={e => setDigerNot(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="Lütfen detaylı açıklayın..."
+              style={{ width:'100%', marginTop:8, background:'#fff', border:'1.5px solid #d5ceed', borderRadius:14, padding:'12px 14px', fontSize:13, color:'#1a1523', resize:'none', outline:'none', fontFamily:'inherit', lineHeight:1.5 }}
+            />
           )}
-        </button>
-
-        {/* Diğer text alanı */}
-        {seciliKategoriler.includes('Diğer') && (
-          <div className="mb-4">
-            <textarea value={digerNot} onChange={e => setDigerNot(e.target.value)}
-              rows={3} placeholder="Lütfen detaylı açıklayın..."
-              className="w-full border-2 border-violet-100 focus:border-violet-300 rounded-2xl px-4 py-3 text-sm focus:outline-none resize-none bg-white transition-colors"
-              autoFocus />
-          </div>
-        )}
+        </div>
 
         {formError && (
-          <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-500 text-sm rounded-2xl px-4 py-3 mb-4">
-            <AlertCircle className="w-4 h-4 shrink-0" /> {formError}
+          <div style={{ display:'flex', alignItems:'center', gap:8, background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:13, borderRadius:12, padding:'10px 14px', marginBottom:12 }}>
+            <AlertCircle style={{ width:15, height:15, flexShrink:0 }} /> {formError}
           </div>
         )}
 
-        {/* Devam butonu */}
-        <button onClick={nextToPhone} disabled={seciliKategoriler.length === 0}
-          className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed text-white py-4 rounded-2xl text-base font-bold shadow-lg shadow-violet-200 transition-all flex items-center justify-center gap-2">
-          Devam Et
-          <ChevronRight className="w-5 h-5" />
+        <button onClick={nextToPhone} disabled={secilenSayi === 0}
+          style={{
+            width:'100%', background:'#4c1d95', border:'none', borderRadius:16,
+            padding:17, display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+            cursor: secilenSayi === 0 ? 'not-allowed' : 'pointer',
+            opacity: secilenSayi === 0 ? 0.35 : 1, transition:'all 0.15s'
+          }}>
+          <span style={{ fontSize:15, fontWeight:700, color:'#ffffff' }}>Devam et</span>
+          <ChevronRight style={{ width:17, height:17, color:'rgba(255,255,255,0.8)' }} />
         </button>
 
-        {seciliKategoriler.length > 0 && (
-          <p className="text-center text-xs text-slate-400 mt-3">
-            {seciliKategoriler.length} konu seçildi
-          </p>
+        {secilenSayi > 0 && (
+          <p style={{ textAlign:'center', fontSize:11, color:'#8b5cf6', marginTop:10, fontWeight:500 }}>{secilenSayi} konu seçildi</p>
         )}
 
-        <p className="text-center text-xs text-slate-300 mt-8 pb-4">
-          {data.kurum.ad} · Anlık Bildirim Sistemi
-        </p>
+        <p style={{ textAlign:'center', fontSize:11, color:'#d5ceed', marginTop:32 }}>{data.kurum.ad} · Anlık Bildirim Sistemi</p>
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }
