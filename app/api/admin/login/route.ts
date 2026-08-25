@@ -16,8 +16,9 @@ export async function POST(req: NextRequest) {
   let valid = false
   if (adminHash.startsWith('$2')) {
     valid = await bcrypt.compare(password, adminHash)
-  } else {
-    valid = password === (process.env.ADMIN_PASSWORD || 'admin123')
+ } else {
+    const plainPassword = process.env.ADMIN_PASSWORD || ''
+    valid = password.trim() === plainPassword.trim()
   }
 
   if (!valid) {
