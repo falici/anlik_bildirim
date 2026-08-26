@@ -1,13 +1,12 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { QrCode, Building2, Calendar, ScanQrCode, LogOut, MessageSquare } from 'lucide-react'
 
 const nav = [
-  { href: '/admin/kurumlar', label: 'Kurumlar', icon: Building2 },
-  { href: '/admin/events', label: 'Etkinlikler', icon: Calendar },
-  { href: '/admin/qr', label: 'QR Kodlar', icon: ScanQrCode },
-  { href: '/admin/bildirimler', label: 'Bildirimler', icon: MessageSquare },
+  { href: '/admin/kurumlar', label: 'Kurumlar', icon: '🏢' },
+  { href: '/admin/events', label: 'Etkinlikler', icon: '📅' },
+  { href: '/admin/qr', label: 'QR Kodlar', icon: '⬛' },
+  { href: '/admin/bildirimler', label: 'Bildirimler', icon: '💬' },
 ]
 
 export default function AdminSidebar() {
@@ -22,38 +21,60 @@ export default function AdminSidebar() {
   if (pathname === '/admin/login') return null
 
   return (
-    <aside className="w-56 shrink-0 bg-white border-r border-slate-200 flex flex-col">
-      <div className="p-5 border-b border-slate-100">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <QrCode className="w-4 h-4 text-white" />
-          </div>
+    <aside style={{
+      width: 220, minWidth: 220, height: '100vh', position: 'sticky', top: 0,
+      background: '#0f0a1e', display: 'flex', flexDirection: 'column',
+      borderRight: '1px solid rgba(255,255,255,0.06)'
+    }}>
+      {/* Logo */}
+      <div style={{ padding: '28px 20px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16
+          }}>⬛</div>
           <div>
-            <p className="font-semibold text-slate-900 text-sm leading-none">Event QR</p>
-            <p className="text-xs text-slate-400 mt-0.5">Yönetim</p>
+            <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, lineHeight: 1 }}>Event QR</p>
+            <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 3 }}>Yönetim Paneli</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1">
-        {nav.map(({ href, label, icon: Icon }) => {
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {nav.map(({ href, label, icon }) => {
           const active = pathname.startsWith(href)
           return (
-            <Link key={href} href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                ${active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
-              <Icon className={`w-4 h-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
-              {label}
+            <Link key={href} href={href} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 12px', borderRadius: 10, textDecoration: 'none',
+              background: active ? 'rgba(124,58,237,0.2)' : 'transparent',
+              border: active ? '1px solid rgba(124,58,237,0.3)' : '1px solid transparent',
+              transition: 'all 0.15s'
+            }}>
+              <span style={{ fontSize: 16 }}>{icon}</span>
+              <span style={{
+                fontSize: 13, fontWeight: 600,
+                color: active ? '#a78bfa' : 'rgba(255,255,255,0.45)'
+              }}>{label}</span>
             </Link>
           )
         })}
       </nav>
 
-      <div className="p-3 border-t border-slate-100">
-        <button onClick={logout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 w-full transition-colors">
-          <LogOut className="w-4 h-4" />
-          Çıkış Yap
+      {/* Logout */}
+      <div style={{ padding: '12px 10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <button onClick={logout} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px', borderRadius: 10, background: 'transparent',
+          border: '1px solid transparent', cursor: 'pointer', transition: 'all 0.15s'
+        }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.1)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+          <span style={{ fontSize: 16 }}>🚪</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.35)' }}>Çıkış Yap</span>
         </button>
       </div>
     </aside>
