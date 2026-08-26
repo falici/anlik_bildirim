@@ -295,7 +295,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
           <p style={{ textAlign:'center', fontSize:11, color:'#8b5cf6', marginBottom:8, fontWeight:500 }}>{secilenSayi} konu seçildi</p>
         )}
 
-        <p style={{ textAlign:'center', fontSize:11, color:'#d5ceed', marginTop:20 }}>{data.kurum.ad} · Anlık Bildirim Sistemi</p>
+        <p style={{ textAlign:'center', fontSize:11, color:'#d5ceed', marginTop:20 }}>{data.kurum.ad} · Anlık Bildirim Sistemi.</p>
       </div>
     </div>
   )
