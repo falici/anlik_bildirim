@@ -52,7 +52,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
     if (temiz.length < 10) { setFormError('Geçerli bir telefon numarası girin'); return }
     setSubmitting(true); setFormError('')
     const kategorilerGonder = [...seciliKategoriler, ...(digerAcik && digerNot.trim() ? ['Diğer'] : [])]
-    const notGonder = [masaNo ? `Masa: ${masaNo}` : '', digerNot].filter(Boolean).join(' | ')
+    const notGonder = digerNot.trim()
     const res = await fetch('/api/form', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -171,7 +171,7 @@ export default function FormPage({ params }: { params: Promise<{ token: string }
           <button onClick={submit} disabled={submitting}
             style={{ flex:2, background:'#4c1d95', border:'none', borderRadius:14, padding:15, fontSize:15, fontWeight:700, color:'#ffffff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, opacity:submitting ? 0.7 : 1 }}>
             {submitting ? <Loader2 style={{ width:16, height:16, animation:'spin 1s linear infinite' }} /> : '💬'}
-            {submitting ? 'Gönderiliyor...' : "Gönder & WhatsApp"}
+            {submitting ? 'Gönderiliyor...' : "Formu Gönder & WhatsApp Canlı Destek Al"}
           </button>
         </div>
       </div>
