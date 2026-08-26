@@ -1,7 +1,6 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { QrCode, Lock, User, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,8 +11,7 @@ export default function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     const res = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -26,63 +24,81 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div style={{
+      minHeight: '100vh', background: '#0f0a1e',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      fontFamily: 'system-ui,-apple-system,sans-serif'
+    }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl mb-4 shadow-lg">
-            <QrCode className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Event QR</h1>
-          <p className="text-slate-500 text-sm mt-1">Yönetim Paneli</p>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16, margin: '0 auto 16px',
+            background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26
+          }}>⬛</div>
+          <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Event QR</h1>
+          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Yönetim Paneline Giriş</p>
         </div>
 
         {/* Form */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <form onSubmit={submit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Kullanıcı Adı</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={form.username}
-                  onChange={e => setForm({ ...form, username: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="admin"
-                  required
-                />
-              </div>
+        <div style={{
+          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 20, padding: 28
+        }}>
+          <form onSubmit={submit}>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Kullanıcı Adı
+              </label>
+              <input
+                type="text" value={form.username}
+                onChange={e => setForm({ ...form, username: e.target.value })}
+                required placeholder="admin"
+                style={{
+                  width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 12, padding: '12px 16px', fontSize: 14, color: '#fff',
+                  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit'
+                }}
+              />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Şifre</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Şifre
+              </label>
+              <div style={{ position: 'relative' }}>
                 <input
-                  type={showPass ? 'text' : 'password'}
-                  value={form.password}
+                  type={showPass ? 'text' : 'password'} value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
-                  className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="••••••••"
-                  required
+                  required placeholder="••••••••"
+                  style={{
+                    width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12, padding: '12px 44px 12px 16px', fontSize: 14, color: '#fff',
+                    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit'
+                  }}
                 />
-                <button type="button" onClick={() => setShowPass(!showPass)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                <button type="button" onClick={() => setShowPass(!showPass)} style={{
+                  position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'rgba(255,255,255,0.3)'
+                }}>{showPass ? '🙈' : '👁️'}</button>
               </div>
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
-                {error}
-              </div>
+              <div style={{
+                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+                borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#f87171', marginBottom: 16
+              }}>{error}</div>
             )}
 
-            <button type="submit" disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-medium py-2.5 rounded-lg text-sm transition-colors">
-              {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+            <button type="submit" disabled={loading} style={{
+              width: '100%', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+              border: 'none', borderRadius: 12, padding: '13px', fontSize: 14, fontWeight: 700,
+              color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1,
+              transition: 'opacity 0.15s'
+            }}>
+              {loading ? 'Giriş yapılıyor...' : 'Giriş Yap →'}
             </button>
           </form>
         </div>
