@@ -12,11 +12,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Kullanıcı adı veya şifre hatalı' }, { status: 401 })
   }
 
-  // Eğer hash yoksa direkt karşılaştır (geliştirme)
+  // Hash varsa bcrypt, yoksa düz şifre karşılaştır
   let valid = false
-  if (adminHash.startsWith('$2')) {
+  if (adminHash && adminHash.startsWith('$2')) {
     valid = await bcrypt.compare(password, adminHash)
- } else {
+  } else {
     const plainPassword = process.env.ADMIN_PASSWORD || ''
     valid = password.trim() === plainPassword.trim()
   }
