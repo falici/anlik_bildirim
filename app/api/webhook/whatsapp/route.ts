@@ -50,14 +50,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Boss kontrolü
-  const normalizedFrom = normalizePhone(msg.from)
+  const normalizedFrom = normalizePhone(msg.from || "")
   const bossNumbers: string[] = (kurum.boss_wa_numbers || []).map((n: string) => normalizePhone(n))
   const isBoss = bossNumbers.includes(normalizedFrom)
 
   try {
     // Claude agent'ı çalıştır
     const reply = await runWeddingAgent({
-      waId: msg.from,
+      waId: msg.from || "",
       message: msg.text,
       kurum,
       isBoss
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     // Yanıtı gönder
     await sendWhatsAppMessage(
-      msg.from,
+      msg.from || "",
       reply,
       kurum.wa_phone_number_id || phoneNumberId,
       kurum.wa_access_token
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     // Hata durumunda misafire bilgi ver
     try {
       await sendWhatsAppMessage(
-        msg.from,
+        msg.from || "",
         'Üzgünüz, şu an teknik bir sorun yaşıyoruz. Lütfen birkaç dakika sonra tekrar deneyin.',
         kurum.wa_phone_number_id || phoneNumberId,
         kurum.wa_access_token
