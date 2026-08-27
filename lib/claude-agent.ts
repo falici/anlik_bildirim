@@ -1,9 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from './supabase'
+import { normalizePhone, isSamePhone } from './whatsapp'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-// Hızlı model — haiku
 const FAST_MODEL = 'claude-haiku-4-5-20251001'
 
 const weddingTools: Anthropic.Tool[] = [
@@ -14,8 +13,12 @@ const weddingTools: Anthropic.Tool[] = [
   },
   {
     name: 'read_guest_history',
-    description: 'Misafirin geçmiş taleplerini getirir (telefon numarasına göre)',
-    input_schema: { type: 'object' as const, properties: { wa_id: { type: 'string', description: 'Misafirin WA numarası' } }, required: ['wa_id'] }
+    description: 'Misafirin geçmiş taleplerini getirir',
+    input_schema: {
+      type: 'object' as const,
+      properties: { wa_id: { type: 'string', description: 'Misafirin WA numarası' } },
+      required: ['wa_id']
+    }
   },
   {
     name: 'save_request',
@@ -36,16 +39,16 @@ const weddingTools: Anthropic.Tool[] = [
 const managerTools: Anthropic.Tool[] = [
   {
     name: 'read_pending',
-    description: 'Bekleyen (çözülmemiş) tüm talepleri listeler. Parametre gerekmez, otomatik çalışır.',
+    description: 'Bekleyen tüm talepleri listeler. Parametre gerekmez.',
     input_schema: { type: 'object' as const, properties: {}, required: [] }
   },
   {
     name: 'update_status',
-    description: 'Bir talebin durumunu günceller (tamamlandi, isleniyor, beklemede)',
+    description: 'Bir talebin durumunu günceller',
     input_schema: {
       type: 'object' as const,
       properties: {
-        request_id: { type: 'string', description: 'Talebin ID değeri' },
+        request_id: { type: 'string' },
         durum: { type: 'string', enum: ['tamamlandi', 'isleniyor', 'beklemede'] }
       },
       required: ['request_id', 'durum']
@@ -53,12 +56,12 @@ const managerTools: Anthropic.Tool[] = [
   },
   {
     name: 'notify_customer',
-    description: 'Müşteriye WhatsApp üzerinden bilgilendirme mesajı gönderir',
+    description: 'Müşteriye WhatsApp mesajı gönderir',
     input_schema: {
       type: 'object' as const,
       properties: {
-        wa_id: { type: 'string', description: 'Müşterinin WA numarası (telefon alanından al)' },
-        message: { type: 'string', description: 'Gönderilecek mesaj' }
+        wa_id: { type: 'string', description: 'Müşterinin telefon numarası (telefon alanından al)' },
+        message: { type: 'string' }
       },
       required: ['wa_id', 'message']
     }
@@ -77,17 +80,32 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           .from('events').select('*')
           .eq('kurum_id', kurum.id).eq('aktif', true)
           .lte('baslangic', now).gte('bitis', now).limit(1)
-        if (!data?.length) return JSON.stringify({ sonuc: 'Şu an aktif etkinlik yok' })
+        if (!data?.length) return JSON.stringify({ sonuc: 'Aktif etkinlik yok' })
         return JSON.stringify(data[0])
       }
 
       case 'read_guest_history': {
-        const wa = input.wa_id || waId
+        const wa = normalizePhone(input.wa_id || waId)
+        const waShort = wa.replace(/^90/, '')  // 905XX → 5XX
+
+        // Hem normalize hem kısa formatta ara
         const { data } = await supabaseAdmin
           .from('form_gonderimleri').select('*')
           .eq('kurum_id', kurum.id)
-          .or(`telefon.eq.${wa},whatsapp_id.eq.${wa}`)
+          .or(`telefon.eq.${wa},telefon.eq.${waShort},telefon.eq.0${waShort},whatsapp_id.eq.${wa},whatsapp_id.eq.${waShort}`)
           .order('olusturulma', { ascending: false }).limit(5)
+
+        // whatsapp_id güncelle — eğer dolu değilse wa_id ile doldur
+        if (data?.length) {
+          for (const row of data) {
+            if (!row.whatsapp_id && waId) {
+              await supabaseAdmin.from('form_gonderimleri')
+                .update({ whatsapp_id: wa })
+                .eq('id', row.id)
+            }
+          }
+        }
+
         return JSON.stringify(data?.length ? data : { sonuc: 'Geçmiş kayıt yok' })
       }
 
@@ -98,14 +116,17 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           .eq('kurum_id', kurum.id).eq('aktif', true)
           .lte('baslangic', now).gte('bitis', now).limit(1)
 
-        const wa = input.wa_id || waId
+        const wa = normalizePhone(input.wa_id || waId)
         const { data, error } = await supabaseAdmin.from('form_gonderimleri').insert({
           kurum_id: kurum.id,
           event_id: events?.[0]?.id,
           telefon: wa,
           whatsapp_id: wa,
           kategoriler: [input.talep],
-          diger_not: [input.masa_no ? `Masa: ${input.masa_no}` : '', input.ad_soyad || ''].filter(Boolean).join(' | '),
+          diger_not: [
+            input.masa_no ? `Masa: ${input.masa_no}` : '',
+            input.ad_soyad || ''
+          ].filter(Boolean).join(' | '),
           durum: 'beklemede'
         }).select().single()
 
@@ -114,7 +135,6 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
       }
 
       case 'read_pending': {
-        // Her zaman kurum.id kullan — AI'ın parametre göndermesini bekleme
         const { data } = await supabaseAdmin
           .from('form_gonderimleri')
           .select('id, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
@@ -131,7 +151,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           .from('form_gonderimleri')
           .update({ durum: input.durum, guncelleme: new Date().toISOString() })
           .eq('id', input.request_id)
-          .eq('kurum_id', kurum.id) // güvenlik için kurum kontrolü
+          .eq('kurum_id', kurum.id)
           .select('id, telefon, whatsapp_id, kategoriler, durum')
           .single()
 
@@ -141,7 +161,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
 
       case 'notify_customer': {
         const { sendWhatsAppMessage } = await import('./whatsapp')
-        const wa = input.wa_id || waId
+        const wa = normalizePhone(input.wa_id || waId)
         await sendWhatsAppMessage(wa, input.message, kurum.wa_phone_number_id, kurum.wa_access_token)
         return JSON.stringify({ basarili: true, gonderildi: wa })
       }
@@ -165,7 +185,8 @@ async function getHistory(waId: string, kurumId: string) {
 }
 
 async function saveMsg(waId: string, kurumId: string, role: 'user' | 'assistant', content: string) {
-  await supabaseAdmin.from('wa_conversations').insert({ wa_id: waId, kurum_id: kurumId, role, content })
+  await supabaseAdmin.from('wa_conversations')
+    .insert({ wa_id: waId, kurum_id: kurumId, role, content })
 }
 
 // ── MAIN AGENT ─────────────────────────────────────────────────────────────
@@ -178,12 +199,11 @@ export async function runWeddingAgent(params: {
 }) {
   const { waId, message, kurum, isBoss } = params
 
-  const history = await getHistory(waId, kurum.id)
+  // Normalize wa_id
+  const normalizedWaId = normalizePhone(waId)
 
-  const systemPrompt = isBoss
-    ? getBossPrompt(kurum)
-    : getGuestPrompt(kurum)
-
+  const history = await getHistory(normalizedWaId, kurum.id)
+  const systemPrompt = isBoss ? getBossPrompt(kurum) : getGuestPrompt(kurum)
   const tools = isBoss ? managerTools : weddingTools
 
   const messages: Anthropic.MessageParam[] = [
@@ -191,7 +211,7 @@ export async function runWeddingAgent(params: {
     { role: 'user', content: message }
   ]
 
-  await saveMsg(waId, kurum.id, 'user', message)
+  await saveMsg(normalizedWaId, kurum.id, 'user', message)
 
   let response = await anthropic.messages.create({
     model: FAST_MODEL,
@@ -201,14 +221,13 @@ export async function runWeddingAgent(params: {
     messages
   })
 
-  // Tool loop
   while (response.stop_reason === 'tool_use') {
     const toolBlocks = response.content.filter(b => b.type === 'tool_use')
     const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
       toolBlocks.map(async (b: any) => ({
         type: 'tool_result' as const,
         tool_use_id: b.id,
-        content: await executeTool(b.name, b.input, kurum, waId)
+        content: await executeTool(b.name, b.input, kurum, normalizedWaId)
       }))
     )
 
@@ -229,7 +248,7 @@ export async function runWeddingAgent(params: {
     .map((b: any) => b.text)
     .join('')
 
-  await saveMsg(waId, kurum.id, 'assistant', finalText)
+  await saveMsg(normalizedWaId, kurum.id, 'assistant', finalText)
   return finalText
 }
 
@@ -246,15 +265,16 @@ function getBossPrompt(kurum: any) {
   return kurum.ai_boss_prompt || `Sen ${kurum.ad} yöneticisine yardımcı olan asistansın.
 
 GÖREVLERİN:
-1. "Bekleyen var mı / sorun var mı / talepler" gibi sorularda → HEMEN read_pending çalıştır, listeyi sun
-2. "X çözüldü / halloldu" gibi durumlarda:
-   - Önce read_pending ile güncel ID'leri al
-   - update_status ile ilgili kaydı "tamamlandi" yap
-   - notify_customer ile müşteriye kibarca bildir: "Merhaba, ilettiğiniz [konu] talebiniz çözüme kavuşturulmuştur. İyi geceler dileriz."
-   - Yöneticiye özet ver
+1. "Bekleyen var mı / sorun / talepler" → HEMEN read_pending çalıştır, listeyi sun
+2. "X çözüldü / halloldu / tamam" gibi durumlarda:
+   - read_pending ile güncel ID'leri al
+   - update_status ile "tamamlandi" yap
+   - notify_customer ile müşteriye kibarca bildir: "Merhaba, ilettiğiniz [konu] talebiniz çözüme kavuşturulmuştur. Flamingo ailesi olarak keyifli bir gece dileriz. 🌹"
+   - notify_customer için wa_id olarak o kaydın telefon veya whatsapp_id alanını kullan
+   - Yöneticiye kısa özet ver
 3. Belirsizlik varsa kısaca sor
 
-KURAL: read_pending'i çalıştırırken parametre gönderme, direkt çalıştır.
-KURAL: notify_customer'da wa_id olarak telefon alanındaki değeri kullan.
+KURAL: read_pending'i parametre olmadan çalıştır.
+KURAL: Güncelleme yapılmadan "çözüldü" deme.
 Kısa, net, profesyonel yaz.`
 }
