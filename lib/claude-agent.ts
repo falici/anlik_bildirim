@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from './supabase'
-import { normalizePhone, isSamePhone } from './whatsapp'
+import { normalizePhone } from './whatsapp'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const FAST_MODEL = 'claude-haiku-4-5-20251001'
