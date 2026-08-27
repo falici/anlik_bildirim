@@ -1,101 +1,78 @@
-const WA_API_URL = 'https://graph.facebook.com/v19.0'
+import { NextRequest, NextResponse } from 'next/server'
+import { parseWebhookMessage, sendWhatsAppMessage, normalizePhone } from '@/lib/whatsapp'
+import { runWeddingAgent } from '@/lib/claude-agent'
+import { supabaseAdmin } from '@/lib/supabase'
 
-export async function sendWhatsAppMessage(
-  to: string,
-  message: string,
-  phoneNumberId?: string,
-  accessToken?: string
-) {
-  const phone = phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID
-  const token = accessToken || process.env.WHATSAPP_ACCESS_TOKEN
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const mode = searchParams.get('hub.mode')
+  const token = searchParams.get('hub.verify_token')
+  const challenge = searchParams.get('hub.challenge')
 
-  const res = await fetch(`${WA_API_URL}/${phone}/messages`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: normalizePhone(to),
-      type: 'text',
-      text: { body: message }
-    })
-  })
-
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(`WA API Error: ${JSON.stringify(err)}`)
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    return new NextResponse(challenge || '', { status: 200 })
   }
-  return res.json()
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 }
 
-// Tüm numaraları 90XXXXXXXXXX formatına normalize et
-export function normalizePhone(phone: string): string {
-  let p = phone.replace(/\D/g, '')
-  if (p.startsWith('0')) p = '9' + p        // 05XX → 905XX
-  if (!p.startsWith('90')) p = '90' + p      // 5XX → 905XX
-  return p
-}
+export async function POST(req: NextRequest) {
+  const body = await req.json()
 
-// İki numaranın aynı kişi olup olmadığını kontrol et
-export function isSamePhone(a: string, b: string): boolean {
-  return normalizePhone(a) === normalizePhone(b)
-}
-
-// Mesaj body'sinden Türkiye numarası yakala
-export function extractPhoneFromText(text: string): string | null {
-  // +90, 90, 0 ile başlayan 10-11 haneli numaraları yakala
-  const patterns = [
-    /(?:\+90|90|0)[\s\-]?(?:\d[\s\-]?){10}/g,  // +90 veya 90 veya 0 ile başlayan
-    /(?<!\d)5\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}(?!\d)/g, // 5XX XXX XX XX
-  ]
-  
-  for (const pattern of patterns) {
-    const matches = text.match(pattern)
-    if (matches) {
-      const num = normalizePhone(matches[0])
-      if (num.length === 12) return num // 90 + 10 hane
-    }
+  if (body.object !== 'whatsapp_business_account') {
+    return NextResponse.json({ status: 'ok' })
   }
-  return null
-}
 
-export function parseWebhookMessage(body: any) {
+  const msg = parseWebhookMessage(body)
+  if (!msg || msg.type !== 'text' || !msg.text.trim()) {
+    return NextResponse.json({ status: 'ok' })
+  }
+
+  // from null olabilir, güvenli hale getir
+  const waId: string = msg.from ?? ''
+  if (!waId) {
+    console.log('wa_id boş geldi, mesaj atlandı')
+    return NextResponse.json({ status: 'ok' })
+  }
+
+  const phoneNumberId: string = msg.phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID ?? ''
+
+  // Kurumu bul
+  const { data: kurumlar } = await supabaseAdmin
+    .from('kurumlar')
+    .select('*')
+    .eq('aktif', true)
+
+  if (!kurumlar?.length) {
+    return NextResponse.json({ status: 'no active venue' })
+  }
+
+  const kurum = kurumlar.find((k: any) => k.wa_phone_number_id === phoneNumberId) || kurumlar[0]
+
+  // Boss kontrolü
+  const normalizedFrom = normalizePhone(waId)
+  const bossNumbers: string[] = (kurum.boss_wa_numbers || []).map((n: string) => normalizePhone(n))
+  const isBoss = bossNumbers.includes(normalizedFrom)
+
   try {
-    const entry = body?.entry?.[0]
-    const changes = entry?.changes?.[0]
-    const value = changes?.value
-    const message = value?.messages?.[0]
-    const contact = value?.contacts?.[0]
+    const reply = await runWeddingAgent({ waId, message: msg.text, kurum, isBoss })
 
-    if (!message) return null
-
-    const rawFrom = message.from || ''
-    const text = message.text?.body || ''
-
-    // wa_id: önce from alanı, yoksa mesaj body'sinden çıkar
-    let waId = rawFrom ? normalizePhone(rawFrom) : null
-    let phoneFromBody: string | null = null
-
-    if (!waId || waId.length < 10) {
-      phoneFromBody = extractPhoneFromText(text)
-      waId = phoneFromBody || rawFrom
-    }
-
-    return {
-      messageId: message.id,
-      from: waId,              // normalize edilmiş numara
-      rawFrom,                 // ham hali
-      phoneFromBody,           // body'den yakalandıysa
-      text,
-      type: message.type,
-      timestamp: message.timestamp,
-      name: contact?.profile?.name || '',
-      phoneNumberId: value?.metadata?.phone_number_id,
-    }
-  } catch {
-    return null
+    await sendWhatsAppMessage(
+      waId,
+      reply,
+      kurum.wa_phone_number_id || phoneNumberId,
+      kurum.wa_access_token
+    )
+  } catch (err: any) {
+    console.error('Agent error:', err)
+    try {
+      await sendWhatsAppMessage(
+        waId,
+        'Üzgünüz, şu an teknik bir sorun yaşıyoruz. Lütfen birkaç dakika sonra tekrar deneyin.',
+        kurum.wa_phone_number_id || phoneNumberId,
+        kurum.wa_access_token
+      )
+    } catch {}
   }
+
+  return NextResponse.json({ status: 'ok' })
 }
