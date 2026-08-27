@@ -1,29 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { normalizePhone } from '@/lib/whatsapp'
 
-// GET /api/form?token=xxx → aktif event'i döner
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const token = searchParams.get('token')
-
   if (!token) return NextResponse.json({ error: 'Token gerekli' }, { status: 400 })
 
-  // QR token'dan kurumu bul
   const { data: qr, error: qrError } = await supabaseAdmin
     .from('qr_kodlar')
-    .select('*, kurum:kurumlar(id, ad, aciklama, aktif)')
+    .select('*, kurum:kurumlar(id, ad, aciklama, aktif, whatsapp_no)')
     .eq('token', token)
     .single()
 
-  if (qrError || !qr) {
-    return NextResponse.json({ error: 'Geçersiz QR kod' }, { status: 404 })
-  }
+  if (qrError || !qr) return NextResponse.json({ error: 'Geçersiz QR kod' }, { status: 404 })
+  if (!qr.kurum?.aktif) return NextResponse.json({ error: 'Bu kurum aktif değil' }, { status: 403 })
 
-  if (!qr.kurum?.aktif) {
-    return NextResponse.json({ error: 'Bu kurum aktif değil' }, { status: 403 })
-  }
-
-  // Şu an aktif event'i bul (birden fazla olursa ilkini al)
   const now = new Date().toISOString()
   const { data: events, error: evError } = await supabaseAdmin
     .from('events')
@@ -35,25 +27,13 @@ export async function GET(req: NextRequest) {
     .order('baslangic', { ascending: true })
 
   if (evError) return NextResponse.json({ error: evError.message }, { status: 500 })
+  if (!events || events.length === 0) return NextResponse.json({ error: 'Şu an aktif bir etkinlik bulunmuyor' }, { status: 404 })
 
-  if (!events || events.length === 0) {
-    return NextResponse.json({ error: 'Şu an aktif bir etkinlik bulunmuyor' }, { status: 404 })
-  }
+  const { data: kategoriler } = await supabaseAdmin.from('kategoriler').select('*').order('sira')
 
-  // Kategorileri getir
-  const { data: kategoriler } = await supabaseAdmin
-    .from('kategoriler')
-    .select('*')
-    .order('sira')
-
-  return NextResponse.json({
-    event: events[0],
-    kurum: qr.kurum,
-    kategoriler: kategoriler || []
-  })
+  return NextResponse.json({ event: events[0], kurum: qr.kurum, kategoriler: kategoriler || [] })
 }
 
-// POST /api/form → form gönderimi
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { token, telefon, kategoriler, diger_not, whatsapp_id } = body
@@ -62,45 +42,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Zorunlu alanlar eksik' }, { status: 400 })
   }
 
-  // Telefon format kontrolü
-  const temizTelefon = telefon.replace(/\D/g, '')
-  if (temizTelefon.length < 10) {
+  // Telefon normalize et — form'dan gelen numara
+  const temizTelefon = normalizePhone(telefon)
+  if (temizTelefon.length < 12) {
     return NextResponse.json({ error: 'Geçerli bir telefon numarası girin' }, { status: 400 })
   }
 
-  // QR token'dan kurumu bul
-  const { data: qr } = await supabaseAdmin
-    .from('qr_kodlar')
-    .select('kurum_id')
-    .eq('token', token)
-    .single()
-
+  const { data: qr } = await supabaseAdmin.from('qr_kodlar').select('kurum_id').eq('token', token).single()
   if (!qr) return NextResponse.json({ error: 'Geçersiz token' }, { status: 404 })
 
-  // Aktif event'i bul
   const now = new Date().toISOString()
   const { data: events } = await supabaseAdmin
-    .from('events')
-    .select('id')
-    .eq('kurum_id', qr.kurum_id)
-    .eq('aktif', true)
-    .lte('baslangic', now)
-    .gte('bitis', now)
-    .order('baslangic', { ascending: true })
-    .limit(1)
+    .from('events').select('id')
+    .eq('kurum_id', qr.kurum_id).eq('aktif', true)
+    .lte('baslangic', now).gte('bitis', now)
+    .order('baslangic', { ascending: true }).limit(1)
 
-  if (!events || events.length === 0) {
-    return NextResponse.json({ error: 'Aktif etkinlik bulunamadı' }, { status: 404 })
-  }
+  if (!events || events.length === 0) return NextResponse.json({ error: 'Aktif etkinlik bulunamadı' }, { status: 404 })
 
-  // Kaydet
+  // wa_id öncelik sırası: 1) whatsapp_id (WA'dan geldiyse) 2) telefon (form'dan)
+  const waId = whatsapp_id ? normalizePhone(whatsapp_id) : temizTelefon
+
   const { data, error } = await supabaseAdmin
     .from('form_gonderimleri')
     .insert({
       kurum_id: qr.kurum_id,
       event_id: events[0].id,
-      telefon: temizTelefon,
-      whatsapp_id: whatsapp_id || null,
+      telefon: temizTelefon,       // form'dan gelen numara (normalize)
+      whatsapp_id: waId,           // WA'dan geldiyse WA id, yoksa telefon
       kategoriler,
       diger_not: diger_not?.trim() || null
     })
