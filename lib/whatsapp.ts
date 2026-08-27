@@ -31,8 +31,35 @@ export async function sendWhatsAppMessage(
   return res.json()
 }
 
+// Tüm numaraları 90XXXXXXXXXX formatına normalize et
 export function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, '').replace(/^0/, '90')
+  let p = phone.replace(/\D/g, '')
+  if (p.startsWith('0')) p = '9' + p        // 05XX → 905XX
+  if (!p.startsWith('90')) p = '90' + p      // 5XX → 905XX
+  return p
+}
+
+// İki numaranın aynı kişi olup olmadığını kontrol et
+export function isSamePhone(a: string, b: string): boolean {
+  return normalizePhone(a) === normalizePhone(b)
+}
+
+// Mesaj body'sinden Türkiye numarası yakala
+export function extractPhoneFromText(text: string): string | null {
+  // +90, 90, 0 ile başlayan 10-11 haneli numaraları yakala
+  const patterns = [
+    /(?:\+90|90|0)[\s\-]?(?:\d[\s\-]?){10}/g,  // +90 veya 90 veya 0 ile başlayan
+    /(?<!\d)5\d{2}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}(?!\d)/g, // 5XX XXX XX XX
+  ]
+  
+  for (const pattern of patterns) {
+    const matches = text.match(pattern)
+    if (matches) {
+      const num = normalizePhone(matches[0])
+      if (num.length === 12) return num // 90 + 10 hane
+    }
+  }
+  return null
 }
 
 export function parseWebhookMessage(body: any) {
@@ -45,10 +72,24 @@ export function parseWebhookMessage(body: any) {
 
     if (!message) return null
 
+    const rawFrom = message.from || ''
+    const text = message.text?.body || ''
+
+    // wa_id: önce from alanı, yoksa mesaj body'sinden çıkar
+    let waId = rawFrom ? normalizePhone(rawFrom) : null
+    let phoneFromBody: string | null = null
+
+    if (!waId || waId.length < 10) {
+      phoneFromBody = extractPhoneFromText(text)
+      waId = phoneFromBody || rawFrom
+    }
+
     return {
       messageId: message.id,
-      from: message.from, // wa_id (numara)
-      text: message.text?.body || '',
+      from: waId,              // normalize edilmiş numara
+      rawFrom,                 // ham hali
+      phoneFromBody,           // body'den yakalandıysa
+      text,
       type: message.type,
       timestamp: message.timestamp,
       name: contact?.profile?.name || '',
