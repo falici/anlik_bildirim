@@ -5,6 +5,9 @@ import { normalizePhone, sendWhatsAppMessage } from './whatsapp'
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const MODEL = 'claude-haiku-4-5-20251001'
 
+// Sıra numarası → UUID mapping (oturum başına)
+const pendingMap = new Map<string, string>()
+
 // ── TOOLS ──────────────────────────────────────────────────────────────────
 
 const weddingTools: Anthropic.Tool[] = [
@@ -180,38 +183,47 @@ async function executeTool(
           .order('olusturulma', { ascending: false })
 
         if (!data?.length) return JSON.stringify({ sonuc: 'Bekleyen talep yok' })
-        // Her kaydı sıra numarasıyla döndür — agent tam UUID kullanmak zorunda
+
+        // Sıra numarasını gerçek UUID'ye bağla — agent sadece sıra numarası kullanır
+        // UUID'leri context'e sakla (global map)
+        pendingMap.clear()
+        data.forEach((row: any, i: number) => pendingMap.set(String(i + 1), row.id))
+
         const formatted = data.map((row: any, i: number) => ({
-          sira: i + 1,
-          tam_uuid: row.id,  // update_status'a bu değeri gönder
+          sira: i + 1,         // Agent bu numarayı kullanır
           telefon: row.whatsapp_id || row.telefon,
-          kategoriler: row.kategoriler,
+          konu: row.kategoriler?.join(', '),
           not: row.diger_not,
-          durum: row.durum,
-          zaman: row.olusturulma,
+          zaman: new Date(row.olusturulma).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           etkinlik: row.event?.ad
         }))
         return JSON.stringify({ toplam: formatted.length, talepler: formatted })
       }
 
       case 'update_status': {
-        // Tek veya çoklu güncelleme
-        const ids: string[] = Array.isArray(input.request_ids)
-          ? input.request_ids
-          : [input.request_ids]
+        const siralar: string[] = Array.isArray(input.request_ids)
+          ? input.request_ids.map(String)
+          : [String(input.request_ids)]
 
         const results = []
-        for (const id of ids) {
+        for (const sira of siralar) {
+          // Sıra numarasından gerçek UUID'yi bul
+          const uuid = pendingMap.get(sira)
+          if (!uuid) {
+            results.push({ hata: `${sira}. sırada kayıt bulunamadı — önce 'read_pending' çalıştır`, sira })
+            continue
+          }
+
           const { data, error } = await supabaseAdmin
             .from('form_gonderimleri')
             .update({ durum: input.durum, guncelleme: new Date().toISOString() })
-            .eq('id', id)
+            .eq('id', uuid)
             .eq('kurum_id', kurum.id)
             .select('id, telefon, whatsapp_id, kategoriler, durum')
             .single()
 
-          if (!error && data) results.push({ basarili: true, kayit: data })
-          else results.push({ hata: error?.message, id })
+          if (!error && data) results.push({ basarili: true, sira, telefon: data.whatsapp_id || data.telefon, konu: data.kategoriler?.join(', ') })
+          else results.push({ hata: error?.message, sira })
         }
         return JSON.stringify(results)
       }
@@ -368,7 +380,7 @@ function getBossPrompt(kurum: any) {
 
 YETKİLERİN:
 - read_pending → bekleyen tüm talepleri listele (parametre gerekmez)
-- update_status → tek veya toplu talep kapat/işleme al (request_ids dizisi ile)
+- update_status → tek veya toplu talep kapat/işleme al (request_ids: sıra numaraları, örn: ["1","2"] veya ["1"])
 - update_request_info → talebe eksik bilgi ekle (masa no, isim, not)
 - send_message → herhangi bir müşteriye mesaj gönder
 - read_request_detail → belirli bir talebin detayını getir
@@ -384,8 +396,8 @@ YETKİLERİN:
 - send_message için telefon alanını kullan (whatsapp_id öncelikli, yoksa telefon)
 - Yöneticiye işlem özeti ver: ne yapıldı, kime bildirildi
 
-KURAL: update_status'tan önce mutlaka read_pending çalıştır — güncel ID'leri al.
-KURAL: update_status'a gönderilen request_ids değeri read_pending'den gelen TAM UUID olmalı — kısaltma, değiştirme.
+KURAL: update_status'tan ÖNCE mutlaka read_pending çalıştır — sıra numaralarını güncelle.
+KURAL: update_status'a request_ids olarak sıra numaralarını gönder ("1", "2" gibi) — UUID değil.
 KURAL: Güncelleme tool'u başarılı dönmeden çözüldü deme.
 KURAL: Kısa, net, profesyonel — ama insan gibi konuş.`
 }
