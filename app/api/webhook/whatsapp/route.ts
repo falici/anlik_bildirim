@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { parseWebhookMessage, sendWhatsAppMessage, normalizePhone } from '@/lib/whatsapp'
+import { parseWebhookMessage, sendWhatsAppMessage, resolveWaId, normalizePhone } from '@/lib/whatsapp'
 import { runWeddingAgent } from '@/lib/claude-agent'
 import { supabaseAdmin } from '@/lib/supabase'
 
@@ -27,14 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   }
 
-  // from null olabilir, güvenli hale getir
-  const waId: string = msg.from ?? ''
-  if (!waId) {
-    console.log('wa_id boş geldi, mesaj atlandı')
-    return NextResponse.json({ status: 'ok' })
-  }
-
-  const phoneNumberId: string = msg.phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID ?? ''
+  const phoneNumberId: string = msg.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
 
   // Kurumu bul
   const { data: kurumlar } = await supabaseAdmin
@@ -48,16 +41,36 @@ export async function POST(req: NextRequest) {
 
   const kurum = kurumlar.find((k: any) => k.wa_phone_number_id === phoneNumberId) || kurumlar[0]
 
+  // wa_id çöz — öncelik: from → body'den numara → null
+  const resolvedWaId = resolveWaId(msg.from, msg.text)
+
   // Boss kontrolü
-  const normalizedFrom = normalizePhone(waId)
   const bossNumbers: string[] = (kurum.boss_wa_numbers || []).map((n: string) => normalizePhone(n))
-  const isBoss = bossNumbers.includes(normalizedFrom)
+  const isBoss = resolvedWaId ? bossNumbers.includes(resolvedWaId) : false
+
+  // wa_id yoksa — anonim kayıt log'la, yanıt veremeyiz
+  if (!resolvedWaId) {
+    console.log('wa_id çözülemedi. Mesaj:', msg.text.slice(0, 100))
+    // Anonim konuşma kaydı tut
+    await supabaseAdmin.from('wa_conversations').insert({
+      wa_id: 'unknown',
+      kurum_id: kurum.id,
+      role: 'user',
+      content: msg.text
+    })
+    return NextResponse.json({ status: 'ok' })
+  }
 
   try {
-    const reply = await runWeddingAgent({ waId, message: msg.text, kurum, isBoss })
+    const reply = await runWeddingAgent({
+      waId: resolvedWaId,
+      message: msg.text,
+      kurum,
+      isBoss
+    })
 
     await sendWhatsAppMessage(
-      waId,
+      resolvedWaId,
       reply,
       kurum.wa_phone_number_id || phoneNumberId,
       kurum.wa_access_token
@@ -66,7 +79,7 @@ export async function POST(req: NextRequest) {
     console.error('Agent error:', err)
     try {
       await sendWhatsAppMessage(
-        waId,
+        resolvedWaId,
         'Üzgünüz, şu an teknik bir sorun yaşıyoruz. Lütfen birkaç dakika sonra tekrar deneyin.',
         kurum.wa_phone_number_id || phoneNumberId,
         kurum.wa_access_token
