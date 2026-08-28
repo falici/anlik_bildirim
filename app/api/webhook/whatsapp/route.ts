@@ -27,6 +27,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   }
 
+  // Form'dan otomatik gönderilen WA mesajlarını tespit et — bunlar zaten form route'ta kaydedildi
+  // "etkinliği için bildirim" içeren mesajlar form mesajıdır, agent tekrar save_request yapmamalı
+  const isFormMessage = msg.text.includes('etkinliği için bildirim') && msg.text.includes('Numara:')
+
   const phoneNumberId: string = msg.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
 
   // Kurumu bul
@@ -62,9 +66,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Form mesajıysa agent'a bildir — zaten kaydedildi, tekrar save_request yapmasın
+    const messageToAgent = isFormMessage
+      ? `[FORM_MESAJI — bu talep zaten sisteme kaydedildi, save_request ÇAĞIRMA] ${msg.text}`
+      : msg.text
+
     const reply = await runWeddingAgent({
       waId: resolvedWaId,
-      message: msg.text,
+      message: messageToAgent,
       kurum,
       isBoss
     })
