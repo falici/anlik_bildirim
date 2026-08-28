@@ -259,6 +259,8 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
       }
 
       case 'send_message': {
+        // Öncelik: whatsapp_id → telefon
+        // input.telefon olarak kaydın whatsapp_id veya telefon alanını geçir
         const tel = normalizePhone(input.telefon)
         if (!tel || tel.length < 12) return JSON.stringify({ hata: 'Geçersiz numara' })
         await sendWhatsAppMessage(tel, input.mesaj, kurum.wa_phone_number_id, kurum.wa_access_token)
