@@ -27,8 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   }
 
-  // Form'dan otomatik gönderilen WA mesajlarını tespit et — bunlar zaten form route'ta kaydedildi
-  // "etkinliği için bildirim" içeren mesajlar form mesajıdır, agent tekrar save_request yapmamalı
+  // Form'dan otomatik gönderilen mesajları tespit et
   const isFormMessage = msg.text.includes('etkinliği için bildirim') && msg.text.includes('Numara:')
 
   const phoneNumberId: string = msg.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
@@ -39,9 +38,7 @@ export async function POST(req: NextRequest) {
     .select('*')
     .eq('aktif', true)
 
-  if (!kurumlar?.length) {
-    return NextResponse.json({ status: 'no active venue' })
-  }
+  if (!kurumlar?.length) return NextResponse.json({ status: 'no active venue' })
 
   const kurum = kurumlar.find((k: any) => k.wa_phone_number_id === phoneNumberId) || kurumlar[0]
 
@@ -52,10 +49,9 @@ export async function POST(req: NextRequest) {
   const bossNumbers: string[] = (kurum.boss_wa_numbers || []).map((n: string) => normalizePhone(n))
   const isBoss = resolvedWaId ? bossNumbers.includes(resolvedWaId) : false
 
-  // wa_id yoksa — anonim kayıt log'la, yanıt veremeyiz
+  // wa_id yoksa anonim log
   if (!resolvedWaId) {
     console.log('wa_id çözülemedi. Mesaj:', msg.text.slice(0, 100))
-    // Anonim konuşma kaydı tut
     await supabaseAdmin.from('wa_conversations').insert({
       wa_id: 'unknown',
       kurum_id: kurum.id,
@@ -65,23 +61,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'ok' })
   }
 
-  try {
-    // Form mesajıysa: whatsapp_id'yi güncelle (gerçek from geldi), agent'a bildir
-    if (isFormMessage && resolvedWaId) {
-      // Form'dan gelen kayıtta whatsapp_id boş — şimdi gerçek wa_id ile doldur
-      const phoneFromBody = extractPhoneFromText(msg.text)
-      if (phoneFromBody) {
-        await supabaseAdmin
-          .from('form_gonderimleri')
-          .update({ whatsapp_id: resolvedWaId })
-          .eq('telefon', phoneFromBody.replace(/^90/, ''))
-          .eq('kurum_id', kurum.id)
-          .is('whatsapp_id', null)
-      }
+  // Form mesajı geldiyse: gerçek wa_id ile form kaydını güncelle
+  // telefon = formda yazılan, whatsapp_id = gerçek WA from
+  if (isFormMessage) {
+    const phoneInBody = extractPhoneFromText(msg.text)
+    if (phoneInBody) {
+      const shortPhone = phoneInBody.replace(/^90/, '')
+      // Hem 905XX hem 5XX formatında ara
+      await supabaseAdmin
+        .from('form_gonderimleri')
+        .update({ whatsapp_id: resolvedWaId })
+        .eq('kurum_id', kurum.id)
+        .is('whatsapp_id', null)
+        .or(`telefon.eq.${phoneInBody},telefon.eq.${shortPhone},telefon.eq.0${shortPhone}`)
     }
+  }
 
+  try {
     const messageToAgent = isFormMessage
-      ? `[FORM_MESAJI — bu talep zaten sisteme kaydedildi, save_request ÇAĞIRMA] ${msg.text}`
+      ? `[FORM_MESAJI — talep sisteme kaydedildi, save_request ÇAĞIRMA] ${msg.text}`
       : msg.text
 
     const reply = await runWeddingAgent({
