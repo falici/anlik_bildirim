@@ -353,7 +353,9 @@ KESİN KURALLAR:
 - Misafir YENİ bir talep belirttiğinde MUTLAKA yeni save_request çağır
 - Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — her talep ayrı kayıt
 - save_request çağırmadan yönlendirdim veya hallettim DEME
-- Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA, direkt kaydet`
+- Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA, direkt kaydet
+- Misafir ek bilgi verirse (adı, masa no, detay) HEMEN update_request_info ile kaydet
+- "Notunuzu aldım / kaydettim" demeden önce update_request_info tool çağrılmış olmalı`
 }
 
 function getBossPrompt(kurum: any) {
@@ -375,5 +377,8 @@ YETKİLERİN:
 KURAL: update_status için ÖNCE read_pending çalıştır — sıra numaraları güncellenir.
 KURAL: update_status'a sıra numarasını ver ("1", "2") — başka hiçbir şey değil.
 KURAL: Güncelleme başarılı olmadan çözüldü deme.
+KURAL: send_message için telefon = o kaydın whatsapp_id alanı, yoksa telefon alanı.
+KURAL: Çözümleme sonrası send_message ZORUNLU — atlamak yasak.
+KURAL: Boss'un yazdığı özel mesajı iletmeni isterse o metni kullan, istemezse standart mesajı gönder.
 KURAL: Kısa, net, profesyonel — ama insan gibi konuş.`
 }
