@@ -308,11 +308,13 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message)
 
-  // Boss tool kullanmak zorunda, guest auto (gereksiz token tüketimini önler)
-  const firstChoice = isBoss ? { type: 'any' as const } : { type: 'auto' as const }
+  // Her iki taraf da auto — prompt ile yönlendirme yeterli
+  const firstChoice = { type: 'auto' as const }
+
+  const maxTokens = isBoss ? 1024 : 512
 
   let response = await anthropic.messages.create({
-    model: MODEL, max_tokens: 512, system: systemPrompt,
+    model: MODEL, max_tokens: maxTokens, system: systemPrompt,
     tools, tool_choice: firstChoice, messages
   })
 
@@ -329,7 +331,7 @@ export async function runWeddingAgent(params: {
     messages.push({ role: 'user', content: results })
 
     response = await anthropic.messages.create({
-      model: MODEL, max_tokens: 512, system: systemPrompt,
+      model: MODEL, max_tokens: maxTokens, system: systemPrompt,
       tools, tool_choice: { type: 'auto' }, messages
     })
   }
@@ -358,7 +360,8 @@ KESİN KURALLAR — BU KURALLARI ASLA İHLAL ETME:
 - Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — şemsiye, kahve, servis = her biri ayrı kayıt
 - Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA — direkt save_request çağır
 - Misafir ek bilgi verirse HEMEN update_request_info ile kaydet, sonra yanıt ver
-- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı`
+- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı
+- Misafir birden fazla istekte bulunursa (örn: "su ve şemsiye") bunları TEK save_request ile birleştirerek kaydet`
 }
 
 function getBossPrompt(kurum: any) {
@@ -375,13 +378,16 @@ YETKİLERİN:
 - "1'i çözdüm" → update_status siralar:["1"] durum:tamamlandi → send_message ile müşteriye bildir
 - "Hepsini çözdüm" → read_pending → tüm sıraları update_status → hepsine send_message
 - "2'ye sor" → o kaydın telefon numarasını bul → send_message ile gönder
-- Çözümleme sonrası müşteriye: "Merhaba, ilettiğiniz *[konu]* talebiniz çözüme kavuşturulmuştur. Keyifli bir gece dileriz 🌹"
+- Çözümleme sonrası müşteriye: "Merhaba, ilettiğiniz *[konu]* talebiniz çözüme kavuşturulmuştur. Keyifli bir gece dileriz."
 
-KURAL: update_status için ÖNCE read_pending çalıştır — sıra numaraları güncellenir.
-KURAL: update_status'a sıra numarasını ver ("1", "2") — başka hiçbir şey değil.
-KURAL: Güncelleme başarılı olmadan çözüldü deme.
-KURAL: send_message için telefon = o kaydın whatsapp_id alanı, yoksa telefon alanı.
-KURAL: Çözümleme sonrası send_message ZORUNLU — atlamak yasak.
-KURAL: Boss'un yazdığı özel mesajı iletmeni isterse o metni kullan, istemezse standart mesajı gönder.
-KURAL: Kısa, net, profesyonel — ama insan gibi konuş.`
+KESİN KURALLAR:
+- update_status için ÖNCE read_pending çalıştır — sıra numaraları güncellenir.
+- update_status'a sadece sıra numarasını ver ("1", "2").
+- Güncelleme başarılı olmadan çözüldü deme.
+- Sıra bulunamadı hatası alırsan hemen read_pending çalıştır, güncel listeyi al ve kullanıcıya belirt.
+- send_message için telefon = o kaydın whatsapp_id alanı, yoksa telefon alanı.
+- Çözümleme sonrası send_message ZORUNLU — atlamak yasak.
+- Boss'un yazdığı özel mesajı iletmeni isterse o metni kullan, istemezse standart mesajı gönder.
+- Emoji kullanma.
+- Kısa, net, profesyonel — ama insan gibi konuş.`
 }
