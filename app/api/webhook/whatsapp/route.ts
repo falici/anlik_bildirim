@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { parseWebhookMessage, sendWhatsAppMessage, resolveWaId, normalizePhone } from '@/lib/whatsapp'
+import { parseWebhookMessage, sendWhatsAppMessage, resolveWaId, normalizePhone, extractPhoneFromText } from '@/lib/whatsapp'
 import { runWeddingAgent } from '@/lib/claude-agent'
 import { supabaseAdmin } from '@/lib/supabase'
 
@@ -66,7 +66,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Form mesajıysa agent'a bildir — zaten kaydedildi, tekrar save_request yapmasın
+    // Form mesajıysa: whatsapp_id'yi güncelle (gerçek from geldi), agent'a bildir
+    if (isFormMessage && resolvedWaId) {
+      // Form'dan gelen kayıtta whatsapp_id boş — şimdi gerçek wa_id ile doldur
+      const phoneFromBody = extractPhoneFromText(msg.text)
+      if (phoneFromBody) {
+        await supabaseAdmin
+          .from('form_gonderimleri')
+          .update({ whatsapp_id: resolvedWaId })
+          .eq('telefon', phoneFromBody.replace(/^90/, ''))
+          .eq('kurum_id', kurum.id)
+          .is('whatsapp_id', null)
+      }
+    }
+
     const messageToAgent = isFormMessage
       ? `[FORM_MESAJI — bu talep zaten sisteme kaydedildi, save_request ÇAĞIRMA] ${msg.text}`
       : msg.text
