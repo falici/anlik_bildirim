@@ -308,7 +308,8 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message)
 
-  const firstChoice = isBoss ? { type: 'any' as const } : { type: 'auto' as const }
+  // Her iki taraf da ilk turda mutlaka tool kullanmalı
+  const firstChoice = { type: 'any' as const }
 
   let response = await anthropic.messages.create({
     model: MODEL, max_tokens: 1024, system: systemPrompt,
@@ -351,13 +352,13 @@ AKIŞ:
 3. Talep netleşince: masa no ve ad geçmişten biliniyorsa SORMA, direkt save_request çağır
 4. save_request kaydettikten sonra kapanış mesajı gönder
 
-KESİN KURALLAR:
-- Misafir YENİ bir talep belirttiğinde MUTLAKA yeni save_request çağır
-- Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — her talep ayrı kayıt
-- save_request çağırmadan yönlendirdim veya hallettim DEME
-- Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA, direkt kaydet
-- Misafir ek bilgi verirse (adı, masa no, detay) HEMEN update_request_info ile kaydet
-- "Notunuzu aldım / kaydettim" demeden önce update_request_info tool çağrılmış olmalı`
+KESİN KURALLAR — BU KURALLARI ASLA İHLAL ETME:
+- Her yeni talep/istek/şikayet için MUTLAKA save_request çağır — tool çağırmadan yanıt verme
+- "Yönlendiriyorum / hallediyorum / ekip gidiyor" demeden ÖNCE save_request çalışmış olmalı
+- Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — şemsiye, kahve, servis = her biri ayrı kayıt
+- Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA — direkt save_request çağır
+- Misafir ek bilgi verirse HEMEN update_request_info ile kaydet, sonra yanıt ver
+- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı`
 }
 
 function getBossPrompt(kurum: any) {
