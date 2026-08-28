@@ -282,7 +282,7 @@ async function getHistory(waId: string, kurumId: string) {
     .from('wa_conversations').select('role, content')
     .eq('wa_id', waId).eq('kurum_id', kurumId)
     .not('content', 'like', '%pending_map%')
-    .order('created_at', { ascending: false }).limit(14)
+    .order('created_at', { ascending: false }).limit(8)
   return (data || []).reverse() as { role: 'user' | 'assistant'; content: string }[]
 }
 
@@ -308,11 +308,11 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message)
 
-  // Her iki taraf da ilk turda mutlaka tool kullanmalı
-  const firstChoice = { type: 'any' as const }
+  // Boss tool kullanmak zorunda, guest auto (gereksiz token tüketimini önler)
+  const firstChoice = isBoss ? { type: 'any' as const } : { type: 'auto' as const }
 
   let response = await anthropic.messages.create({
-    model: MODEL, max_tokens: 1024, system: systemPrompt,
+    model: MODEL, max_tokens: 512, system: systemPrompt,
     tools, tool_choice: firstChoice, messages
   })
 
@@ -329,7 +329,7 @@ export async function runWeddingAgent(params: {
     messages.push({ role: 'user', content: results })
 
     response = await anthropic.messages.create({
-      model: MODEL, max_tokens: 1024, system: systemPrompt,
+      model: MODEL, max_tokens: 512, system: systemPrompt,
       tools, tool_choice: { type: 'auto' }, messages
     })
   }
