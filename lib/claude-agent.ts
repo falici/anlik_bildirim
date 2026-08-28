@@ -180,7 +180,18 @@ async function executeTool(
           .order('olusturulma', { ascending: false })
 
         if (!data?.length) return JSON.stringify({ sonuc: 'Bekleyen talep yok' })
-        return JSON.stringify(data)
+        // Her kaydı sıra numarasıyla döndür — agent tam UUID kullanmak zorunda
+        const formatted = data.map((row: any, i: number) => ({
+          sira: i + 1,
+          tam_uuid: row.id,  // update_status'a bu değeri gönder
+          telefon: row.whatsapp_id || row.telefon,
+          kategoriler: row.kategoriler,
+          not: row.diger_not,
+          durum: row.durum,
+          zaman: row.olusturulma,
+          etkinlik: row.event?.ad
+        }))
+        return JSON.stringify({ toplam: formatted.length, talepler: formatted })
       }
 
       case 'update_status': {
@@ -374,6 +385,7 @@ YETKİLERİN:
 - Yöneticiye işlem özeti ver: ne yapıldı, kime bildirildi
 
 KURAL: update_status'tan önce mutlaka read_pending çalıştır — güncel ID'leri al.
-KURAL: Güncelleme başarılı olmadan çözüldü deme.
+KURAL: update_status'a gönderilen request_ids değeri read_pending'den gelen TAM UUID olmalı — kısaltma, değiştirme.
+KURAL: Güncelleme tool'u başarılı dönmeden çözüldü deme.
 KURAL: Kısa, net, profesyonel — ama insan gibi konuş.`
 }
