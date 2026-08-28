@@ -295,11 +295,14 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message)
 
+  const firstToolChoice = isBoss ? { type: 'any' as const } : { type: 'auto' as const }
+
   let response = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 1024,
     system: systemPrompt,
     tools,
+    tool_choice: firstToolChoice,
     messages
   })
 
@@ -321,6 +324,7 @@ export async function runWeddingAgent(params: {
       max_tokens: 1024,
       system: systemPrompt,
       tools,
+      tool_choice: { type: 'auto' },
       messages
     })
   }
