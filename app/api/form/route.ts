@@ -60,16 +60,18 @@ export async function POST(req: NextRequest) {
 
   if (!events || events.length === 0) return NextResponse.json({ error: 'Aktif etkinlik bulunamadı' }, { status: 404 })
 
-  // wa_id öncelik sırası: 1) whatsapp_id (WA'dan geldiyse) 2) telefon (form'dan)
-  const waId = whatsapp_id ? normalizePhone(whatsapp_id) : temizTelefon
+  // telefon: form'dan girilen numara (geri dönüş için fallback)
+  // whatsapp_id: SADECE gerçek WA from değeri — form numarası buraya yazılmaz
+  // wa_id yoksa whatsapp_id boş kalır, dönüş yapılamaz ama kayıt tutulur
+  const waId = whatsapp_id ? normalizePhone(whatsapp_id) : null
 
   const { data, error } = await supabaseAdmin
     .from('form_gonderimleri')
     .insert({
       kurum_id: qr.kurum_id,
       event_id: events[0].id,
-      telefon: temizTelefon,       // form'dan gelen numara (normalize)
-      whatsapp_id: waId,           // WA'dan geldiyse WA id, yoksa telefon
+      telefon: temizTelefon,   // form'da yazılan numara (referans için)
+      whatsapp_id: waId,       // gerçek WA id — sadece varsa yazılır
       kategoriler,
       diger_not: diger_not?.trim() || null
     })
