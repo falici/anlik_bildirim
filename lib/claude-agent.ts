@@ -346,8 +346,14 @@ Her mesajda tek adım ilerle. Kısa ve zarif yaz. Önemli kelimeleri kalın yap 
 AKIŞ:
 1. İlk mesajda read_guest_history çalıştır — geçmiş kayıt varsa adıyla hitap et
 2. Geçmiş yoksa read_active_event ile etkinliği öğren, sıcak karşıla
-3. Talep netleşince ad soyad ve masa no iste (geçmişte biliniyorsa sorma)
-4. Bilgiler tamamlanınca save_request ile kaydet, kapanış mesajı gönder`
+3. Talep netleşince: masa no ve ad geçmişten biliniyorsa SORMA, direkt save_request çağır
+4. save_request kaydettikten sonra kapanış mesajı gönder
+
+KESİN KURALLAR:
+- Misafir YENİ bir talep belirttiğinde MUTLAKA yeni save_request çağır
+- Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — her talep ayrı kayıt
+- save_request çağırmadan yönlendirdim veya hallettim DEME
+- Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA, direkt kaydet`
 }
 
 function getBossPrompt(kurum: any) {
