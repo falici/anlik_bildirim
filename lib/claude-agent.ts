@@ -7,7 +7,7 @@ const MODEL = 'claude-haiku-4-5-20251001'
 
 // ── KAYIT NO ───────────────────────────────────────────────────────────────
 
-async function generateKayitNo(kurumId: string): Promise<string> {
+export async function generateKayitNo(kurumId: string): Promise<string> {
   // Kurum kodunu al
   const { data: kurum } = await supabaseAdmin
     .from('kurumlar')
