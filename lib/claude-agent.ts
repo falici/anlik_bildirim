@@ -384,8 +384,19 @@ export async function runWeddingAgent(params: {
   await saveMsg(waId, kurum.id, 'user', message)
 
   let response = await anthropic.messages.create({
-    model: MODEL, max_tokens: maxTokens, system: systemPrompt,
-    tools, tool_choice: { type: 'auto' }, messages
+    model: MODEL, max_tokens: maxTokens,
+    system: [{ 
+      type: 'text', 
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' } // sistem promptunu cache'le
+    }] as any,
+    tools: tools.map((t, i) => 
+      // Son tool'a cache_control ekle — tüm tool listesi cache'lenir
+      i === tools.length - 1 
+        ? { ...t, cache_control: { type: 'ephemeral' } } 
+        : t
+    ) as any,
+    tool_choice: { type: 'auto' }, messages
   })
 
   while (response.stop_reason === 'tool_use') {
@@ -401,8 +412,18 @@ export async function runWeddingAgent(params: {
     messages.push({ role: 'user', content: results })
 
     response = await anthropic.messages.create({
-      model: MODEL, max_tokens: maxTokens, system: systemPrompt,
-      tools, tool_choice: { type: 'auto' }, messages
+      model: MODEL, max_tokens: maxTokens,
+      system: [{ 
+        type: 'text', 
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' }
+      }] as any,
+      tools: tools.map((t, i) => 
+        i === tools.length - 1 
+          ? { ...t, cache_control: { type: 'ephemeral' } } 
+          : t
+      ) as any,
+      tool_choice: { type: 'auto' }, messages
     })
   }
 
