@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { normalizePhone } from '@/lib/whatsapp'
+import { generateKayitNo } from '@/lib/claude-agent'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -62,6 +63,8 @@ export async function POST(req: NextRequest) {
 
   // telefon = formda yazılan numara (her zaman)
   // whatsapp_id = WA'dan gelen from (webhook'tan güncellenir, form numarası yazılmaz)
+  const kayitNo = await generateKayitNo(qr.kurum_id)
+
   const { data, error } = await supabaseAdmin
     .from('form_gonderimleri')
     .insert({
@@ -70,11 +73,12 @@ export async function POST(req: NextRequest) {
       telefon: temizTelefon,  // formda yazılan
       whatsapp_id: null,      // webhook'tan gelecek gerçek WA from
       kategoriler,
-      diger_not: diger_not?.trim() || null
+      diger_not: diger_not?.trim() || null,
+      kayit_no: kayitNo
     })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true, id: data.id }, { status: 201 })
+  return NextResponse.json({ success: true, id: data.id, kayit_no: kayitNo }, { status: 201 })
 }
