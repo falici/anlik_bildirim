@@ -1,32 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from './supabase'
 import { normalizePhone, sendWhatsAppMessage } from './whatsapp'
+import { generateKayitNo } from './kayit-no'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const MODEL = 'claude-haiku-4-5-20251001'
 
 // ── KAYIT NO ───────────────────────────────────────────────────────────────
 
-export async function generateKayitNo(kurumId: string): Promise<string> {
-  // Kurum kodunu al
-  const { data: kurum } = await supabaseAdmin
-    .from('kurumlar')
-    .select('ad')
-    .eq('id', kurumId)
-    .single()
 
-  const ad = kurum?.ad || 'EVT'
-  const kod = ad.replace(/[^a-zA-ZğüşıöçĞÜŞİÖÇ]/g, '').toUpperCase().slice(0, 3) || 'EVT'
-
-  // Kurum için toplam kayıt sayısı
-  const { count } = await supabaseAdmin
-    .from('form_gonderimleri')
-    .select('*', { count: 'exact', head: true })
-    .eq('kurum_id', kurumId)
-
-  const sira = (count || 0) + 1
-  return `${kod}-${String(sira).padStart(4, '0')}`
-}
 
 // ── PENDING SESSION ────────────────────────────────────────────────────────
 
