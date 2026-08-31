@@ -5,7 +5,30 @@ import { normalizePhone, sendWhatsAppMessage } from './whatsapp'
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const MODEL = 'claude-haiku-4-5-20251001'
 
-// ── PENDING SESSION — sıra→UUID eşleşmesini DB'de sakla ───────────────────
+// ── KAYIT NO ───────────────────────────────────────────────────────────────
+
+async function generateKayitNo(kurumId: string): Promise<string> {
+  // Kurum kodunu al
+  const { data: kurum } = await supabaseAdmin
+    .from('kurumlar')
+    .select('ad')
+    .eq('id', kurumId)
+    .single()
+
+  const ad = kurum?.ad || 'EVT'
+  const kod = ad.replace(/[^a-zA-ZğüşıöçĞÜŞİÖÇ]/g, '').toUpperCase().slice(0, 3) || 'EVT'
+
+  // Kurum için toplam kayıt sayısı
+  const { count } = await supabaseAdmin
+    .from('form_gonderimleri')
+    .select('*', { count: 'exact', head: true })
+    .eq('kurum_id', kurumId)
+
+  const sira = (count || 0) + 1
+  return `${kod}-${String(sira).padStart(4, '0')}`
+}
+
+// ── PENDING SESSION ────────────────────────────────────────────────────────
 
 async function savePendingSession(kurumId: string, bossWaId: string, mapping: Record<string, string>) {
   await supabaseAdmin.from('wa_conversations').insert({
@@ -43,20 +66,34 @@ const weddingTools: Anthropic.Tool[] = [
   },
   {
     name: 'read_guest_history',
-    description: 'Misafirin geçmiş taleplerini telefon numarasına göre getirir',
+    description: 'Misafirin geçmiş taleplerini getirir',
     input_schema: { type: 'object' as const, properties: {}, required: [] }
   },
   {
     name: 'save_request',
-    description: 'Misafirin talebini kayıt altına alır',
+    description: 'Misafirin talebini/isteğini/şikayetini kayıt altına alır. Kayıt numarası döner.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        ad_soyad: { type: 'string' },
-        masa_no: { type: 'string' },
-        talep: { type: 'string' }
+        ad_soyad: { type: 'string', description: 'Misafirin adı soyadı' },
+        masa_no: { type: 'string', description: 'Masa numarası' },
+        talep: { type: 'string', description: 'Talep, istek veya şikayet konusu' }
       },
       required: ['talep']
+    }
+  },
+  {
+    name: 'update_request_info',
+    description: 'Mevcut kayda eksik bilgi ekler (masa no, ad soyad, not)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        kayit_no: { type: 'string', description: 'Kayıt numarası (örn: FLM-0001)' },
+        masa_no: { type: 'string' },
+        ad_soyad: { type: 'string' },
+        not: { type: 'string' }
+      },
+      required: ['kayit_no']
     }
   }
 ]
@@ -64,40 +101,40 @@ const weddingTools: Anthropic.Tool[] = [
 const managerTools: Anthropic.Tool[] = [
   {
     name: 'read_pending',
-    description: 'Bekleyen tüm talepleri sıra numarasıyla listeler. Parametre gerekmez.',
+    description: 'Bekleyen tüm talepleri kayıt numarasıyla listeler. Parametre gerekmez.',
     input_schema: { type: 'object' as const, properties: {}, required: [] }
   },
   {
     name: 'update_status',
-    description: 'Sıra numarasına göre talep durumunu günceller. Sıra numarası: "1", "2" gibi.',
+    description: 'Kayıt numarasına göre talep durumunu günceller',
     input_schema: {
       type: 'object' as const,
       properties: {
-        siralar: {
+        kayit_nolar: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Güncellenecek sıra numaraları: ["1"] veya ["1","2","3"]'
+          description: 'Güncellenecek kayıt numaraları: ["FLM-0001"] veya ["FLM-0001","FLM-0002"]'
         },
         durum: {
           type: 'string',
           enum: ['tamamlandi', 'isleniyor', 'beklemede']
         }
       },
-      required: ['siralar', 'durum']
+      required: ['kayit_nolar', 'durum']
     }
   },
   {
     name: 'update_request_info',
-    description: 'Talebe eksik bilgi ekler (masa no, ad soyad, not)',
+    description: 'Kayıt numarasıyla talebe eksik bilgi ekler',
     input_schema: {
       type: 'object' as const,
       properties: {
-        sira: { type: 'string', description: 'Sıra numarası' },
+        kayit_no: { type: 'string' },
         masa_no: { type: 'string' },
         ad_soyad: { type: 'string' },
         not: { type: 'string' }
       },
-      required: ['sira']
+      required: ['kayit_no']
     }
   },
   {
@@ -106,7 +143,7 @@ const managerTools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        telefon: { type: 'string', description: 'Müşteri telefon numarası' },
+        telefon: { type: 'string', description: 'whatsapp_id varsa onu, yoksa telefon alanını kullan' },
         mesaj: { type: 'string' }
       },
       required: ['telefon', 'mesaj']
@@ -158,6 +195,8 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           .eq('kurum_id', kurum.id).eq('aktif', true)
           .lte('baslangic', now).gte('bitis', now).limit(1)
 
+        const kayitNo = await generateKayitNo(kurum.id)
+
         const { data, error } = await supabaseAdmin.from('form_gonderimleri').insert({
           kurum_id: kurum.id,
           event_id: events?.[0]?.id,
@@ -165,30 +204,33 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           whatsapp_id: waId,
           kategoriler: [input.talep],
           diger_not: [input.masa_no ? `Masa: ${input.masa_no}` : '', input.ad_soyad || ''].filter(Boolean).join(' | '),
-          durum: 'beklemede'
+          durum: 'beklemede',
+          kayit_no: kayitNo
         }).select().single()
 
         if (error) return JSON.stringify({ hata: error.message })
-        return JSON.stringify({ basarili: true, id: data.id })
+        return JSON.stringify({ basarili: true, kayit_no: kayitNo })
       }
 
       case 'read_pending': {
         const { data } = await supabaseAdmin
           .from('form_gonderimleri')
-          .select('id, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
+          .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
           .eq('kurum_id', kurum.id)
           .eq('durum', 'beklemede')
           .order('olusturulma', { ascending: false })
 
         if (!data?.length) return JSON.stringify({ sonuc: 'Bekleyen talep yok' })
 
-        // Sıra→UUID mapping'i DB'de sakla (serverless'ta memory kaybolur)
+        // kayit_no → id mapping DB'ye kaydet
         const mapping: Record<string, string> = {}
-        data.forEach((row: any, i: number) => { mapping[String(i + 1)] = row.id })
+        data.forEach((row: any) => {
+          if (row.kayit_no) mapping[row.kayit_no] = row.id
+        })
         await savePendingSession(kurum.id, waId, mapping)
 
-        const liste = data.map((row: any, i: number) => ({
-          sira: i + 1,
+        const liste = data.map((row: any) => ({
+          kayit_no: row.kayit_no || 'N/A',
           telefon: row.whatsapp_id || row.telefon,
           konu: (row.kategoriler || []).join(', '),
           not: row.diger_not || '',
@@ -200,17 +242,27 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
       }
 
       case 'update_status': {
-        // DB'den sıra→UUID mapping'i al
         const mapping = await getPendingSession(kurum.id, waId)
-        const siralar: string[] = Array.isArray(input.siralar)
-          ? input.siralar.map(String)
-          : [String(input.siralar)]
+        const kayitNolar: string[] = Array.isArray(input.kayit_nolar)
+          ? input.kayit_nolar
+          : [input.kayit_nolar]
 
         const results = []
-        for (const sira of siralar) {
-          const uuid = mapping[sira]
+        for (const kayitNo of kayitNolar) {
+          // Önce mapping'den bak, sonra direkt DB'den ara
+          let uuid = mapping[kayitNo]
           if (!uuid) {
-            results.push({ hata: `${sira}. sıra bulunamadı — önce 'read_pending' çalıştır`, sira })
+            const { data: found } = await supabaseAdmin
+              .from('form_gonderimleri')
+              .select('id, telefon, whatsapp_id, kategoriler')
+              .eq('kayit_no', kayitNo)
+              .eq('kurum_id', kurum.id)
+              .single()
+            if (found) uuid = found.id
+          }
+
+          if (!uuid) {
+            results.push({ hata: `${kayitNo} bulunamadı`, kayit_no: kayitNo })
             continue
           }
 
@@ -219,27 +271,32 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
             .update({ durum: input.durum, guncelleme: new Date().toISOString() })
             .eq('id', uuid)
             .eq('kurum_id', kurum.id)
-            .select('id, telefon, whatsapp_id, kategoriler, durum')
+            .select('id, kayit_no, telefon, whatsapp_id, kategoriler, durum')
             .single()
 
           if (!error && data) {
             results.push({
               basarili: true,
-              sira,
+              kayit_no: kayitNo,
               telefon: data.whatsapp_id || data.telefon,
               konu: (data.kategoriler || []).join(', ')
             })
           } else {
-            results.push({ hata: error?.message, sira })
+            results.push({ hata: error?.message, kayit_no: kayitNo })
           }
         }
         return JSON.stringify(results)
       }
 
       case 'update_request_info': {
-        const mapping = await getPendingSession(kurum.id, waId)
-        const uuid = mapping[String(input.sira)]
-        if (!uuid) return JSON.stringify({ hata: `${input.sira}. sıra bulunamadı — önce read_pending çalıştır` })
+        const { data: found } = await supabaseAdmin
+          .from('form_gonderimleri')
+          .select('id, diger_not')
+          .eq('kayit_no', input.kayit_no)
+          .eq('kurum_id', kurum.id)
+          .single()
+
+        if (!found) return JSON.stringify({ hata: `${input.kayit_no} bulunamadı` })
 
         const notParts = [
           input.masa_no ? `Masa: ${input.masa_no}` : '',
@@ -250,17 +307,14 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
         const { data, error } = await supabaseAdmin
           .from('form_gonderimleri')
           .update({ diger_not: notParts.join(' | '), guncelleme: new Date().toISOString() })
-          .eq('id', uuid)
-          .eq('kurum_id', kurum.id)
+          .eq('id', found.id)
           .select().single()
 
         if (error) return JSON.stringify({ hata: error.message })
-        return JSON.stringify({ basarili: true, guncellenen: data })
+        return JSON.stringify({ basarili: true, kayit_no: input.kayit_no })
       }
 
       case 'send_message': {
-        // Öncelik: whatsapp_id → telefon
-        // input.telefon olarak kaydın whatsapp_id veya telefon alanını geçir
         const tel = normalizePhone(input.telefon)
         if (!tel || tel.length < 12) return JSON.stringify({ hata: 'Geçersiz numara' })
         await sendWhatsAppMessage(tel, input.mesaj, kurum.wa_phone_number_id, kurum.wa_access_token)
@@ -300,6 +354,7 @@ export async function runWeddingAgent(params: {
   const history = await getHistory(waId, kurum.id)
   const systemPrompt = isBoss ? getBossPrompt(kurum) : getGuestPrompt(kurum)
   const tools = isBoss ? managerTools : weddingTools
+  const maxTokens = isBoss ? 1024 : 512
 
   const messages: Anthropic.MessageParam[] = [
     ...history.map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
@@ -308,14 +363,9 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message)
 
-  // Her iki taraf da auto — prompt ile yönlendirme yeterli
-  const firstChoice = { type: 'auto' as const }
-
-  const maxTokens = isBoss ? 1024 : 512
-
   let response = await anthropic.messages.create({
     model: MODEL, max_tokens: maxTokens, system: systemPrompt,
-    tools, tool_choice: firstChoice, messages
+    tools, tool_choice: { type: 'auto' }, messages
   })
 
   while (response.stop_reason === 'tool_use') {
@@ -346,48 +396,48 @@ export async function runWeddingAgent(params: {
 function getGuestPrompt(kurum: any) {
   return kurum.ai_system_prompt || `Sen ${kurum.ad} için görev yapan dijital misafir ilişkileri asistanısın.
 Misafir mesajlarını kibar, sıcak ve çözüm odaklı yönet. Asla yapay zeka olduğunu belirtme.
-Her mesajda tek adım ilerle. Kısa ve zarif yaz. Önemli kelimeleri kalın yap (*kelime*).
+Her mesajda tek adım ilerle. Kısa ve zarif yaz. Önemli kelimeleri kalın yap (*kelime*). Emoji kullanma.
 
 AKIŞ:
 1. İlk mesajda read_guest_history çalıştır — geçmiş kayıt varsa adıyla hitap et
 2. Geçmiş yoksa read_active_event ile etkinliği öğren, sıcak karşıla
 3. Talep netleşince: masa no ve ad geçmişten biliniyorsa SORMA, direkt save_request çağır
-4. save_request kaydettikten sonra kapanış mesajı gönder
+4. save_request başarılı olunca dönen kayit_no ile kapanış mesajı gönder:
+   "Talebiniz *[kayit_no]* numarasıyla kayıt altına alınmıştır. Ekibimiz en kısa sürede masanıza gelecektir."
 
-KESİN KURALLAR — BU KURALLARI ASLA İHLAL ETME:
+KESİN KURALLAR:
 - Her yeni talep/istek/şikayet için MUTLAKA save_request çağır — tool çağırmadan yanıt verme
-- "Yönlendiriyorum / hallediyorum / ekip gidiyor" demeden ÖNCE save_request çalışmış olmalı
-- Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — şemsiye, kahve, servis = her biri ayrı kayıt
+- save_request çağırmadan "yönlendirdim / ekip gidiyor / hallettim" DEME
+- Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — her talep ayrı kayıt
 - Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA — direkt save_request çağır
-- Misafir ek bilgi verirse HEMEN update_request_info ile kaydet, sonra yanıt ver
-- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı
-- Misafir birden fazla istekte bulunursa (örn: "su ve şemsiye") bunları TEK save_request ile birleştirerek kaydet`
+- Misafir birden fazla istekte bulunursa (örn: "su ve şemsiye") tek save_request ile birleştir
+- Misafir ek bilgi verirse HEMEN update_request_info ile kaydet
+- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı`
 }
 
 function getBossPrompt(kurum: any) {
   return kurum.ai_boss_prompt || `Sen ${kurum.ad} yöneticisinin güvenilir asistanısın.
 
 YETKİLERİN:
-- read_pending → bekleyen talepleri SIRA NUMARASIYLA listeler
-- update_status → siralar: ["1"] veya ["1","2"] ile güncelle
-- update_request_info → sira numarasıyla talebe bilgi ekle
-- send_message → müşteriye mesaj gönder (telefon alanından numarayı al)
+- read_pending → bekleyen talepleri KAYIT NUMARASIYLA listeler (FLM-0001 gibi)
+- update_status → kayit_nolar: ["FLM-0001"] veya ["FLM-0001","FLM-0002"] ile güncelle
+- update_request_info → kayit_no ile talebe bilgi ekle
+- send_message → müşteriye mesaj gönder
 
 ÇALIŞMA TARZI:
 - "Bekleyen var mı / listele" → read_pending çalıştır
-- "1'i çözdüm" → update_status siralar:["1"] durum:tamamlandi → send_message ile müşteriye bildir
-- "Hepsini çözdüm" → read_pending → tüm sıraları update_status → hepsine send_message
-- "2'ye sor" → o kaydın telefon numarasını bul → send_message ile gönder
+- "FLM-0001 çözüldü" → update_status → send_message ile müşteriye bildir
+- "Hepsini çözdüm" → read_pending → tüm kayıt nolarını update_status → hepsine send_message
+- "FLM-0002'ye sor" → o kaydın telefon numarasını bul → send_message ile gönder
 - Çözümleme sonrası müşteriye: "Merhaba, ilettiğiniz *[konu]* talebiniz çözüme kavuşturulmuştur. Keyifli bir gece dileriz."
 
 KESİN KURALLAR:
-- update_status için ÖNCE read_pending çalıştır — sıra numaraları güncellenir.
-- update_status'a sadece sıra numarasını ver ("1", "2").
-- Güncelleme başarılı olmadan çözüldü deme.
-- Sıra bulunamadı hatası alırsan hemen read_pending çalıştır, güncel listeyi al ve kullanıcıya belirt.
-- send_message için telefon = o kaydın whatsapp_id alanı, yoksa telefon alanı.
-- Çözümleme sonrası send_message ZORUNLU — atlamak yasak.
-- Boss'un yazdığı özel mesajı iletmeni isterse o metni kullan, istemezse standart mesajı gönder.
-- Emoji kullanma.
-- Kısa, net, profesyonel — ama insan gibi konuş.`
+- update_status'a kayıt numarasını ver ("FLM-0001") — başka hiçbir şey değil
+- Güncelleme başarılı olmadan çözüldü deme
+- Kayıt bulunamazsa read_pending çalıştır, güncel listeyi al ve kullanıcıya belirt
+- send_message için: whatsapp_id varsa onu, yoksa telefon alanını kullan
+- Çözümleme sonrası send_message ZORUNLU — atlamak yasak
+- Boss özel mesaj yazmışsa onu ilet, yazmamışsa standart mesajı gönder
+- Emoji kullanma
+- Kısa, net, profesyonel yaz`
 }
