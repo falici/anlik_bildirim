@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { normalizePhone } from '@/lib/whatsapp'
-import { generateKayitNo } from '@/lib/claude-agent'
+import { generateKayitNo } from '@/lib/kayit-no'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
