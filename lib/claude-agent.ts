@@ -130,6 +130,17 @@ const managerTools: Anthropic.Tool[] = [
       },
       required: ['telefon', 'mesaj']
     }
+  },
+  {
+    name: 'read_request_detail',
+    description: 'Kayıt numarasına göre talebin tüm detaylarını getirir (telefon, whatsapp_id dahil)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        kayit_no: { type: 'string', description: 'Kayıt numarası (örn: FLA-0004)' }
+      },
+      required: ['kayit_no']
+    }
   }
 ]
 
@@ -216,7 +227,10 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           telefon: row.whatsapp_id || row.telefon,
           konu: (row.kategoriler || []).join(', '),
           not: row.diger_not || '',
-          saat: new Date(row.olusturulma).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+          saat: new Date(new Date(row.olusturulma).getTime() + 3 * 60 * 60 * 1000).toLocaleString('tr-TR', { 
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
+          }),
           etkinlik: (row as any).event?.ad || ''
         }))
 
@@ -257,11 +271,13 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
             .single()
 
           if (!error && data) {
+            const gonderim_no = data.whatsapp_id || data.telefon
             results.push({
               basarili: true,
               kayit_no: kayitNo,
-              telefon: data.whatsapp_id || data.telefon,
-              konu: (data.kategoriler || []).join(', ')
+              musteri_no: gonderim_no,   // send_message için bu numarayı kullan
+              konu: (data.kategoriler || []).join(', '),
+              mesaj_gonder: gonderim_no ? true : false
             })
           } else {
             results.push({ hata: error?.message, kayit_no: kayitNo })
@@ -294,6 +310,28 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
 
         if (error) return JSON.stringify({ hata: error.message })
         return JSON.stringify({ basarili: true, kayit_no: input.kayit_no })
+      }
+
+      case 'read_request_detail': {
+        const { data, error } = await supabaseAdmin
+          .from('form_gonderimleri')
+          .select('*, event:events(ad)')
+          .eq('kayit_no', input.kayit_no)
+          .eq('kurum_id', kurum.id)
+          .single()
+
+        if (error || !data) return JSON.stringify({ hata: `${input.kayit_no} bulunamadı` })
+
+        return JSON.stringify({
+          kayit_no: data.kayit_no,
+          musteri_no: data.whatsapp_id || data.telefon,
+          whatsapp_id: data.whatsapp_id,
+          telefon: data.telefon,
+          kategoriler: data.kategoriler,
+          not: data.diger_not,
+          durum: data.durum,
+          etkinlik: (data as any).event?.ad
+        })
       }
 
       case 'send_message': {
@@ -401,24 +439,27 @@ function getBossPrompt(kurum: any) {
   return kurum.ai_boss_prompt || `Sen ${kurum.ad} yöneticisinin güvenilir asistanısın.
 
 YETKİLERİN:
-- read_pending → bekleyen talepleri KAYIT NUMARASIYLA listeler (FLM-0001 gibi)
-- update_status → kayit_nolar: ["FLM-0001"] veya ["FLM-0001","FLM-0002"] ile güncelle
+- read_pending → bekleyen talepleri KAYIT NUMARASIYLA listeler (FLA-0001 gibi)
+- update_status → kayit_nolar: ["FLA-0001"] veya ["FLA-0001","FLA-0002"] ile güncelle, sonuçta musteri_no gelir
+- read_request_detail → kayit_no ile talebin telefon/whatsapp_id dahil tüm detaylarını getirir
 - update_request_info → kayit_no ile talebe bilgi ekle
 - send_message → müşteriye mesaj gönder
 
 ÇALIŞMA TARZI:
 - "Bekleyen var mı / listele" → read_pending çalıştır
-- "FLM-0001 çözüldü" → update_status → send_message ile müşteriye bildir
+- "FLA-0001 çözüldü" → update_status → sonuçta gelen musteri_no ile HEMEN send_message yap
 - "Hepsini çözdüm" → read_pending → tüm kayıt nolarını update_status → hepsine send_message
-- "FLM-0002'ye sor" → o kaydın telefon numarasını bul → send_message ile gönder
-- Çözümleme sonrası müşteriye: "Merhaba, ilettiğiniz *[konu]* talebiniz çözüme kavuşturulmuştur. Keyifli bir gece dileriz."
+- "Hepsini çözdüm" → read_pending → tüm kayıt nolarını update_status → her birinin musteri_no ile send_message
+- "FLA-0002 bak" → read_request_detail ile tüm detayları getir
 
 KESİN KURALLAR:
-- update_status'a kayıt numarasını ver ("FLM-0001") — başka hiçbir şey değil
+- update_status'a kayıt numarasını ver ("FLA-0001") — başka hiçbir şey değil
+- update_status başarılı olunca dönen musteri_no ile HEMEN send_message çağır — bekletme
+- musteri_no boşsa read_request_detail ile detayı bak, oradan telefonu al
 - Güncelleme başarılı olmadan çözüldü deme
 - Kayıt bulunamazsa read_pending çalıştır, güncel listeyi al ve kullanıcıya belirt
 - send_message için: whatsapp_id varsa onu, yoksa telefon alanını kullan
-- Çözümleme sonrası send_message ZORUNLU — atlamak yasak
+- Çözümleme sonrası send_message ZORUNLU — boss ayrıca söylemeden yap
 - Boss özel mesaj yazmışsa onu ilet, yazmamışsa standart mesajı gönder
 - Emoji kullanma
 - Kısa, net, profesyonel yaz`
