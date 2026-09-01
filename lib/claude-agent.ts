@@ -475,8 +475,14 @@ KESİN KURALLAR:
 - Önceki kayıt olması yeni kayıt açmaya ENGEL DEĞİL — her talep ayrı kayıt
 - Masa no ve ad önceki konuşmadan biliniyorsa tekrar SORMA — direkt save_request çağır
 - Misafir birden fazla istekte bulunursa (örn: "su ve şemsiye") tek save_request ile birleştir
-- Misafir ek bilgi verirse HEMEN update_request_info ile kaydet
-- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı`
+- [FORM_MESAJI] etiketi olan mesajlarda save_request ÇAĞIRMA — zaten kayıtlı
+
+MEVCUT KAYIT GÜNCELLEME:
+- Misafir ek bilgi verince (masa no, isim, detay) → read_guest_history ile açık kaydı bul → kayit_no al → update_request_info çağır
+- Agent "Masa numaranız?" diye sorduysa ve misafir cevap verdiyse → HEMEN update_request_info
+- Misafir talebi değiştirirse ("aslında müzik sorunu") → update_request_info ile notu güncelle
+- Güncelleme sonrası: "Talebiniz güncellendi, ekibimiz en kısa sürede ilgilenecektir."
+- kayit_no'yu read_guest_history sonucundaki kayit_no alanından al`
 }
 
 function getBossPrompt(kurum: any) {
