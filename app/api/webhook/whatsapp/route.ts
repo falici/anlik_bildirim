@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseWebhookMessage, sendWhatsAppMessage, resolveWaId, normalizePhone, extractPhoneFromText } from '@/lib/whatsapp'
 import { runWeddingAgent } from '@/lib/claude-agent'
+import { runOperasyonAgent } from '@/lib/operasyon-agent'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
@@ -80,10 +81,16 @@ export async function POST(req: NextRequest) {
   if (body.object !== 'whatsapp_business_account') return NextResponse.json({ status: 'ok' })
 
   const msg = parseWebhookMessage(body)
-  if (!msg || msg.type !== 'text' || !msg.text.trim()) return NextResponse.json({ status: 'ok' })
+  if (!msg) return NextResponse.json({ status: 'ok' })
+
+  // Medya mesajları da destekleniyor (image, video, document)
+  const isMedia = ['image', 'video', 'document'].includes(msg.type)
+  const isText = msg.type === 'text' && msg.text?.trim()
+
+  if (!isText && !isMedia) return NextResponse.json({ status: 'ok' })
 
   // Mesaj karakter limiti — 500 karakter
-  const messageText = msg.text.slice(0, 500)
+  const messageText = (msg.text || (isMedia ? '[Medya gönderildi]' : '')).slice(0, 500)
 
   const phoneNumberId: string = msg.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
 
@@ -114,6 +121,16 @@ export async function POST(req: NextRequest) {
   const bossNumbers: string[] = (kurum.boss_wa_numbers || []).map((n: string) => normalizePhone(n))
   const isBoss = bossNumbers.includes(resolvedWaId)
 
+  // Operasyon personel kontrolü
+  const { data: opPersonel } = await supabaseAdmin
+    .from('operasyon_personel')
+    .select('*')
+    .eq('kurum_id', kurum.id)
+    .eq('telefon', resolvedWaId)
+    .eq('aktif', true)
+    .single()
+  const isOperasyon = !!opPersonel
+
   // Rate limit — boss'a uygulanmaz
   if (!isBoss) {
     const allowed = await checkRateLimit(resolvedWaId, kurum.id)
@@ -121,6 +138,28 @@ export async function POST(req: NextRequest) {
       console.log('Rate limit aşıldı:', resolvedWaId)
       return NextResponse.json({ status: 'ok' }) // sessizce yok say
     }
+  }
+
+  // Operasyon personeli — event kontrolü yok, direkt agent
+  if (isOperasyon) {
+    try {
+      const mediaId = isMedia ? (msg as any).mediaId : undefined
+      const mediaType = isMedia ? msg.type : undefined
+
+      const reply = await runOperasyonAgent({
+        waId: resolvedWaId,
+        message: messageText,
+        kurum,
+        personel: opPersonel,
+        mediaId,
+        mediaType
+      })
+      await sendWhatsAppMessage(resolvedWaId, reply, waPhone, waToken)
+    } catch (err: any) {
+      console.error('Operasyon agent error:', err)
+      try { await sendWhatsAppMessage(resolvedWaId, 'Talebiniz alınamadı, lütfen tekrar deneyin.', waPhone, waToken) } catch {}
+    }
+    return NextResponse.json({ status: 'ok' })
   }
 
   // Aktif event kontrolü — boss'a uygulanmaz
@@ -137,14 +176,33 @@ export async function POST(req: NextRequest) {
   // Form mesajı kontrolü
   const isFormMessage = messageText.includes('etkinliği için bildirim') && messageText.includes('Numara:')
 
-  // Form mesajı gelince whatsapp_id güncelle
+  // Form mesajı gelince whatsapp_id ve masa no güncelle
   if (isFormMessage) {
     const phoneInBody = extractPhoneFromText(messageText)
     if (phoneInBody) {
       const shortPhone = phoneInBody.replace(/^90/, '')
+
+      // Masa no'yu mesajdan çıkar
+      const masaMatch = messageText.match(/Masa No:\s*(\d+)/i)
+      const masaNo = masaMatch ? masaMatch[1] : null
+
+      // Not alanını çıkar
+      const konuMatch = messageText.match(/Konu:\s*([^\n]+)/i)
+      const konular = konuMatch ? konuMatch[1].trim() : null
+
+      const notMatch = messageText.match(/Not:\s*([^\n]+)/i)
+      const not = notMatch ? notMatch[1].replace(/Masa:\s*\d+\s*\|?\s*/i, '').trim() : null
+
+      // Güncelle
+      const updateData: any = { whatsapp_id: resolvedWaId }
+      if (masaNo || not) {
+        const digerNot = [masaNo ? `Masa: ${masaNo}` : '', not || ''].filter(Boolean).join(' | ')
+        if (digerNot) updateData.diger_not = digerNot
+      }
+
       await supabaseAdmin
         .from('form_gonderimleri')
-        .update({ whatsapp_id: resolvedWaId })
+        .update(updateData)
         .eq('kurum_id', kurum.id)
         .is('whatsapp_id', null)
         .or(`telefon.eq.${phoneInBody},telefon.eq.${shortPhone},telefon.eq.0${shortPhone}`)
