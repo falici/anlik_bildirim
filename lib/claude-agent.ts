@@ -167,7 +167,8 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
       case 'read_guest_history': {
         const waShort = waId.replace(/^90/, '')
         const { data } = await supabaseAdmin
-          .from('form_gonderimleri').select('*')
+          .from('form_gonderimleri')
+          .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
           .eq('kurum_id', kurum.id)
           .or(`telefon.eq.${waId},telefon.eq.${waShort},telefon.eq.0${waShort},whatsapp_id.eq.${waId},whatsapp_id.eq.${waShort}`)
           .order('olusturulma', { ascending: false }).limit(5)
@@ -295,14 +296,35 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
       }
 
       case 'update_request_info': {
-        const { data: found } = await supabaseAdmin
-          .from('form_gonderimleri')
-          .select('id, diger_not')
-          .eq('kayit_no', input.kayit_no)
-          .eq('kurum_id', kurum.id)
-          .single()
+        let found: any = null
 
-        if (!found) return JSON.stringify({ hata: `${input.kayit_no} bulunamadı` })
+        if (input.kayit_no) {
+          // Kayıt no varsa direkt ara
+          const { data } = await supabaseAdmin
+            .from('form_gonderimleri')
+            .select('id, diger_not')
+            .eq('kayit_no', input.kayit_no)
+            .eq('kurum_id', kurum.id)
+            .single()
+          found = data
+        }
+
+        if (!found) {
+          // Kayıt no yoksa — misafirin açık kaydını bul
+          const waShort = waId.replace(/^90/, '')
+          const { data } = await supabaseAdmin
+            .from('form_gonderimleri')
+            .select('id, kayit_no, diger_not')
+            .eq('kurum_id', kurum.id)
+            .eq('durum', 'acik')
+            .or(`telefon.eq.${waId},telefon.eq.${waShort},whatsapp_id.eq.${waId}`)
+            .order('olusturulma', { ascending: false })
+            .limit(1)
+            .single()
+          found = data
+        }
+
+        if (!found) return JSON.stringify({ hata: 'Güncellenecek açık kayıt bulunamadı' })
 
         const notParts = [
           input.masa_no ? `Masa: ${input.masa_no}` : '',
