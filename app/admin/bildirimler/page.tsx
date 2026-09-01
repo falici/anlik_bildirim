@@ -12,6 +12,9 @@ interface Bildirim {
   diger_not?: string
   kapatan_not?: string
   durum: 'acik' | 'kapali'
+  tip?: 'misafir' | 'operasyon'
+  medya_url?: string
+  medya_tip?: string
   olusturulma: string
   kurum?: { id: string; ad: string }
   event?: { id: string; ad: string }
@@ -27,6 +30,7 @@ export default function BildirimlerPage() {
   const [updating, setUpdating] = useState<string | null>(null)
   const [filterKurum, setFilterKurum] = useState('')
   const [filterDurum, setFilterDurum] = useState('acik')
+  const [filterTip, setFilterTip] = useState<'misafir' | 'operasyon'>('misafir')
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [kapatanNot, setKapatanNot] = useState<Record<string, string>>({})
   const [showNotInput, setShowNotInput] = useState<string | null>(null)
@@ -35,11 +39,12 @@ export default function BildirimlerPage() {
     const params = new URLSearchParams()
     if (filterKurum) params.set('kurum_id', filterKurum)
     if (filterDurum) params.set('durum', filterDurum)
+    params.set('tip', filterTip)
     const res = await fetch(`/api/admin/bildirimler?${params}`)
     if (res.ok) setBildirimler(await res.json())
     setLoading(false)
     setLastRefresh(new Date())
-  }, [filterKurum, filterDurum])
+  }, [filterKurum, filterDurum, filterTip])
 
   useEffect(() => { fetch('/api/admin/kurumlar').then(r => r.json()).then(setKurumlar) }, [])
   useEffect(() => { load() }, [load])
@@ -97,6 +102,20 @@ export default function BildirimlerPage() {
         </button>
       </div>
 
+      {/* Tip sekmesi */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: '#f3f1fb', padding: 4, borderRadius: 12, width: 'fit-content' }}>
+        {(['misafir', 'operasyon'] as const).map(tip => (
+          <button key={tip} onClick={() => setFilterTip(tip)} style={{
+            border: 'none', borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            background: filterTip === tip ? '#fff' : 'transparent',
+            color: filterTip === tip ? '#6d28d9' : '#9ca3af',
+            boxShadow: filterTip === tip ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
+          }}>
+            {tip === 'misafir' ? '💬 Misafir' : '🔧 Operasyon'}
+          </button>
+        ))}
+      </div>
+
       {/* Özet */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
         <div style={{ background: '#fff', border: '1px solid #ede9f8', borderRadius: 16, padding: '18px 20px' }}>
@@ -149,7 +168,7 @@ export default function BildirimlerPage() {
                       {b.durum === 'acik' ? '● Açık' : '✓ Kapalı'}
                     </span>
                     <span style={{ fontSize: 12, color: '#9ca3af' }}>🏢 {b.kurum?.ad}</span>
-                    <span style={{ fontSize: 12, color: '#9ca3af' }}>📅 {b.event?.ad}</span>
+                    {b.event?.ad && <span style={{ fontSize: 12, color: '#9ca3af' }}>📅 {b.event.ad}</span>}
                     <span style={{ fontSize: 11, color: '#d1d5db', marginLeft: 'auto' }}>{formatDate(b.olusturulma)}</span>
                   </div>
 
@@ -165,6 +184,18 @@ export default function BildirimlerPage() {
                     <div style={{ background: '#f8f7ff', border: '1px solid #ede9f8', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
                       <p style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>"{b.diger_not}"</p>
                     </div>
+                  )}
+
+                  {/* Operasyon fotoğrafı */}
+                  {b.medya_url && b.medya_tip?.startsWith('image/') && (
+                    <a href={b.medya_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginBottom: 8 }}>
+                      <img src={b.medya_url} alt="Talep fotoğrafı" style={{ maxWidth: 160, maxHeight: 120, borderRadius: 10, border: '1px solid #ede9f8', objectFit: 'cover' }} />
+                    </a>
+                  )}
+                  {b.medya_url && !b.medya_tip?.startsWith('image/') && (
+                    <a href={b.medya_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#6d28d9', display: 'block', marginBottom: 8 }}>
+                      📎 Ekli dosyayı görüntüle
+                    </a>
                   )}
 
                   {/* Kapatan notu */}

@@ -7,6 +7,7 @@ const nav = [
   { href: '/admin/events', label: 'Etkinlikler', icon: '📅' },
   { href: '/admin/qr', label: 'QR Kodlar', icon: '⬛' },
   { href: '/admin/bildirimler', label: 'Bildirimler', icon: '💬' },
+  { href: '/admin/operasyon-personel', label: 'Operasyon Personeli', icon: '🔧' },
   { href: '/admin/ai-ayarlari', label: 'AI & WhatsApp', icon: '🤖' },
   { href: '/admin/engellenen', label: 'Engellenenler', icon: '🚫' },
 ]

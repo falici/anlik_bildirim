@@ -98,6 +98,7 @@ export function parseWebhookMessage(body: any) {
 
     const rawFrom = message.from || ''
     const text = message.text?.body || ''
+    const media = message.image || message.video || message.document
 
     return {
       messageId: message.id,
@@ -107,7 +108,36 @@ export function parseWebhookMessage(body: any) {
       timestamp: message.timestamp,
       name: contact?.profile?.name || '',
       phoneNumberId: value?.metadata?.phone_number_id,
+      mediaId: media?.id,
+      mediaMimeType: media?.mime_type,
     }
+  } catch {
+    return null
+  }
+}
+
+// WhatsApp Media API — mediaId'den dosyayı indirir (iki adımlı: URL çöz, sonra indir)
+export async function getWhatsAppMedia(
+  mediaId: string,
+  phoneNumberId?: string,
+  accessToken?: string
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const token = accessToken || process.env.WHATSAPP_ACCESS_TOKEN
+
+  try {
+    const metaRes = await fetch(`${WA_API_URL}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!metaRes.ok) return null
+    const meta = await metaRes.json()
+
+    const fileRes = await fetch(meta.url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!fileRes.ok) return null
+
+    const arrayBuffer = await fileRes.arrayBuffer()
+    return { buffer: Buffer.from(arrayBuffer), mimeType: meta.mime_type || 'application/octet-stream' }
   } catch {
     return null
   }

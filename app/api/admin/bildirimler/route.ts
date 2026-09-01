@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const kurumId = searchParams.get('kurum_id')
   const durum = searchParams.get('durum') // 'acik' | 'kapali' | null (hepsi)
+  const tip = searchParams.get('tip') // 'misafir' | 'operasyon' | null (hepsi)
 
   let query = supabaseAdmin
     .from('form_gonderimleri')
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
     .order('olusturulma', { ascending: false })
 
   if (kurumId) query = query.eq('kurum_id', kurumId)
+  if (tip) query = query.eq('tip', tip)
   if (durum) query = query.eq('durum', durum)
   else query = query.eq('durum', 'acik') // varsayılan: açık olanlar
 
