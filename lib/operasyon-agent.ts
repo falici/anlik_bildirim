@@ -106,14 +106,15 @@ function getSystemPrompt(personel: any) {
   return `Sen bir tesis/etkinlik mekanının operasyon (bakım-onarım) asistanısın. Şu anda iç personel ${personel.ad}${personel.rol ? ` (${personel.rol})` : ''} ile konuşuyorsun. Bu bir misafir değil, personel — kısa, net ve iş odaklı yaz. Emoji kullanma.
 
 GÖREV:
-- Personelin bildirdiği arıza/bakım/temizlik sorununu analiz et
-- Fotoğraf gönderildiyse görüntüyü de dikkate al, gördüklerini açıklamaya kat
+- Personelin YAZDIĞI metne göre arıza/bakım/temizlik sorununu kategorize et — fotoğraf gönderilmiş olsa bile görüntüyü yorumlama, sadece personelin kendi yazdığı açıklamayı ve konumu kullan
 - Mesajda BİRDEN FAZLA ayrı sorun varsa (örn: "lamba patladı ve tuvalet tıkandı") HER biri için AYRI save_operasyon_request çağır
 - Kategori seç: Elektrik, Temizlik, Teknik, Diğer
 - Konum belirtilmişse (salon, oda, tuvalet no vb.) konum alanına yaz
+- Fotoğraf her zaman gelmeyebilir — bu normal, foto olmadan da mesaj metnine göre kaydet
 
 KESİN KURALLAR:
 - Her sorun için MUTLAKA save_operasyon_request çağır — tool çağırmadan "kaydettim" deme
+- aciklama alanına KENDİ yorumunu/tahminini ekleme — sadece personelin yazdıklarını özetle
 - Tüm kayıtlar oluşunca dönen kayıt numaralarıyla kısa bir onay mesajı yaz, örn:
   "Kaydedildi: [kayit_no] — [kategori] — [konum]" (birden fazlaysa alt alta)
 - Netleştirme gerekmedikçe soru sorma, elindeki bilgiyle direkt kaydet`
@@ -133,32 +134,24 @@ export async function runOperasyonAgent(params: {
 
   let medyaUrl: string | null = null
   let medyaTip: string | null = null
-  let imageBlock: any = null
 
+  // Fotoğraf Storage'a yüklenir ve kayda eklenir ama Claude'a görsel olarak
+  // gönderilmez — AI görüntüyü yorumlamaz, token da harcamaz. Kategori/konum/
+  // açıklama tamamen personelin yazdığı metinden çıkarılır.
   if (mediaId) {
     const media = await getWhatsAppMedia(mediaId, kurum.wa_phone_number_id, kurum.wa_access_token)
     if (media) {
       medyaTip = media.mimeType
       medyaUrl = await uploadOperasyonMedia(media.buffer, media.mimeType, kurum.id)
-      if (mediaType === 'image' && media.mimeType.startsWith('image/')) {
-        imageBlock = {
-          type: 'image',
-          source: { type: 'base64', media_type: media.mimeType, data: media.buffer.toString('base64') }
-        }
-      }
     }
   }
 
   const history = await getHistory(waId, kurum.id)
   const systemPrompt = getSystemPrompt(personel)
 
-  const userContent = imageBlock
-    ? [imageBlock, { type: 'text', text: message || '[Fotoğraf gönderildi]' }]
-    : message
-
   const messages: Anthropic.MessageParam[] = [
     ...history.map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
-    { role: 'user', content: userContent }
+    { role: 'user', content: message || '[Fotoğraf gönderildi]' }
   ]
 
   await saveMsg(waId, kurum.id, 'user', message || '[Medya gönderildi]')
