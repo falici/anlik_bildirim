@@ -88,7 +88,7 @@ const managerTools: Anthropic.Tool[] = [
   },
   {
     name: 'update_status',
-    description: 'Kayıt numarasına göre talep durumunu günceller',
+    description: 'Kayıt numarasına göre talep durumunu günceller. durum: kapali veya acik',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -99,7 +99,11 @@ const managerTools: Anthropic.Tool[] = [
         },
         durum: {
           type: 'string',
-          enum: ['tamamlandi', 'isleniyor', 'beklemede']
+          enum: ['kapali', 'acik']
+        },
+        kapatan_not: {
+          type: 'string',
+          description: 'Kapatma notu — isteğe bağlı'
         }
       },
       required: ['kayit_nolar', 'durum']
@@ -197,7 +201,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           whatsapp_id: waId,
           kategoriler: [input.talep],
           diger_not: [input.masa_no ? `Masa: ${input.masa_no}` : '', input.ad_soyad || ''].filter(Boolean).join(' | '),
-          durum: 'beklemede',
+          durum: 'acik',
           kayit_no: kayitNo
         }).select().single()
 
@@ -210,7 +214,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           .from('form_gonderimleri')
           .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
           .eq('kurum_id', kurum.id)
-          .eq('durum', 'beklemede')
+          .eq('durum', 'acik')
           .order('olusturulma', { ascending: false })
 
         if (!data?.length) return JSON.stringify({ sonuc: 'Bekleyen talep yok' })
@@ -264,7 +268,11 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
 
           const { data, error } = await supabaseAdmin
             .from('form_gonderimleri')
-            .update({ durum: input.durum, guncelleme: new Date().toISOString() })
+            .update({ 
+              durum: input.durum,
+              kapatan_not: input.kapatan_not || null,
+              guncelleme: new Date().toISOString() 
+            })
             .eq('id', uuid)
             .eq('kurum_id', kurum.id)
             .select('id, kayit_no, telefon, whatsapp_id, kategoriler, durum')
@@ -383,20 +391,24 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message)
 
+  // Boss ilk mesajda read_pending'i zorla — "bekleyen yok" hatasını önle
+  const firstToolChoice = isBoss 
+    ? { type: 'any' as const }
+    : { type: 'auto' as const }
+
   let response = await anthropic.messages.create({
     model: MODEL, max_tokens: maxTokens,
     system: [{ 
       type: 'text', 
       text: systemPrompt,
-      cache_control: { type: 'ephemeral' } // sistem promptunu cache'le
+      cache_control: { type: 'ephemeral' }
     }] as any,
     tools: tools.map((t, i) => 
-      // Son tool'a cache_control ekle — tüm tool listesi cache'lenir
       i === tools.length - 1 
         ? { ...t, cache_control: { type: 'ephemeral' } } 
         : t
     ) as any,
-    tool_choice: { type: 'auto' }, messages
+    tool_choice: firstToolChoice, messages
   })
 
   while (response.stop_reason === 'tool_use') {
