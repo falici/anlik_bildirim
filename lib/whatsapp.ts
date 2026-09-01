@@ -128,17 +128,24 @@ export async function getWhatsAppMedia(
     const metaRes = await fetch(`${WA_API_URL}/${mediaId}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
-    if (!metaRes.ok) return null
+    if (!metaRes.ok) {
+      console.error('WA medya meta alınamadı:', metaRes.status, await metaRes.text())
+      return null
+    }
     const meta = await metaRes.json()
 
     const fileRes = await fetch(meta.url, {
       headers: { Authorization: `Bearer ${token}` }
     })
-    if (!fileRes.ok) return null
+    if (!fileRes.ok) {
+      console.error('WA medya dosyası indirilemedi:', fileRes.status, await fileRes.text())
+      return null
+    }
 
     const arrayBuffer = await fileRes.arrayBuffer()
     return { buffer: Buffer.from(arrayBuffer), mimeType: meta.mime_type || 'application/octet-stream' }
-  } catch {
+  } catch (e) {
+    console.error('WA medya indirme hatası:', e)
     return null
   }
 }
