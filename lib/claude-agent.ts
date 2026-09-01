@@ -359,28 +359,37 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
 
 // ── MEMORY ─────────────────────────────────────────────────────────────────
 
-async function getHistory(waId: string, kurumId: string) {
-  const { data } = await supabaseAdmin
+async function getHistory(waId: string, kurumId: string, eventId?: string | null) {
+  let query = supabaseAdmin
     .from('wa_conversations').select('role, content')
     .eq('wa_id', waId).eq('kurum_id', kurumId)
     .not('content', 'like', '%pending_map%')
-    .order('created_at', { ascending: false }).limit(8)
+    .order('created_at', { ascending: false })
+    .limit(8)
+
+  // Event bazlı izolasyon — sadece bu etkinliğe ait konuşmalar
+  if (eventId) {
+    query = query.or(`event_id.eq.${eventId},event_id.is.null`)
+  }
+
+  const { data } = await query
   return (data || []).reverse() as { role: 'user' | 'assistant'; content: string }[]
 }
 
-async function saveMsg(waId: string, kurumId: string, role: 'user' | 'assistant', content: string) {
-  await supabaseAdmin.from('wa_conversations').insert({ wa_id: waId, kurum_id: kurumId, role, content })
+async function saveMsg(waId: string, kurumId: string, role: 'user' | 'assistant', content: string, eventId?: string | null) {
+  await supabaseAdmin.from('wa_conversations').insert({ wa_id: waId, kurum_id: kurumId, role, content, event_id: eventId || null })
 }
 
 // ── MAIN ───────────────────────────────────────────────────────────────────
 
 export async function runWeddingAgent(params: {
-  waId: string; message: string; kurum: any; isBoss: boolean
+  waId: string; message: string; kurum: any; isBoss: boolean; activeEventId?: string | null
 }) {
-  const { waId, message, kurum, isBoss } = params
+  const { waId, message, kurum, isBoss, activeEventId } = params
 
-  const history = await getHistory(waId, kurum.id)
-  const systemPrompt = isBoss ? getBossPrompt(kurum) : getGuestPrompt(kurum)
+  const history = await getHistory(waId, kurum.id, activeEventId)
+  const greeting = kurum._greeting || 'keyifli bir akşam'
+  const systemPrompt = isBoss ? getBossPrompt(kurum) : getGuestPrompt(kurum, greeting)
   const tools = isBoss ? managerTools : weddingTools
   const maxTokens = isBoss ? 1024 : 512
 
@@ -389,7 +398,7 @@ export async function runWeddingAgent(params: {
     { role: 'user', content: message }
   ]
 
-  await saveMsg(waId, kurum.id, 'user', message)
+  await saveMsg(waId, kurum.id, 'user', message, activeEventId)
 
   // Boss ilk mesajda read_pending'i zorla — "bekleyen yok" hatasını önle
   const firstToolChoice = isBoss 
@@ -440,13 +449,13 @@ export async function runWeddingAgent(params: {
   }
 
   const finalText = response.content.filter(b => b.type === 'text').map((b: any) => b.text).join('')
-  await saveMsg(waId, kurum.id, 'assistant', finalText)
+  await saveMsg(waId, kurum.id, 'assistant', finalText, activeEventId)
   return finalText
 }
 
 // ── PROMPTS ────────────────────────────────────────────────────────────────
 
-function getGuestPrompt(kurum: any) {
+function getGuestPrompt(kurum: any, greeting: string = 'keyifli bir akşam') {
   return kurum.ai_system_prompt || `Sen ${kurum.ad} için görev yapan dijital misafir ilişkileri asistanısın.
 Misafir mesajlarını kibar, sıcak ve çözüm odaklı yönet. Asla yapay zeka olduğunu belirtme.
 Her mesajda tek adım ilerle. Kısa ve zarif yaz. Önemli kelimeleri kalın yap (*kelime*). Emoji kullanma.
@@ -456,7 +465,7 @@ AKIŞ:
 2. Geçmiş yoksa read_active_event ile etkinliği öğren, sıcak karşıla
 3. Talep netleşince: masa no ve ad geçmişten biliniyorsa SORMA, direkt save_request çağır
 4. save_request başarılı olunca dönen kayit_no ile kapanış mesajı gönder:
-   "Talebiniz *[kayit_no]* numarasıyla kayıt altına alınmıştır. Ekibimiz en kısa sürede masanıza gelecektir."
+   "Talebiniz *[kayit_no]* numarasıyla kayıt altına alınmıştır. Ekibimiz en kısa sürede *[Masa No]* numaralı masanıza gelecektir. ${greeting} dileriz."
 
 KESİN KURALLAR:
 - Her yeni talep/istek/şikayet için MUTLAKA save_request çağır — tool çağırmadan yanıt verme
