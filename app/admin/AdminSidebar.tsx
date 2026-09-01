@@ -8,6 +8,7 @@ const nav = [
   { href: '/admin/qr', label: 'QR Kodlar', icon: '⬛' },
   { href: '/admin/bildirimler', label: 'Bildirimler', icon: '💬' },
   { href: '/admin/ai-ayarlari', label: 'AI & WhatsApp', icon: '🤖' },
+  { href: '/admin/engellenen', label: 'Engellenenler', icon: '🚫' },
 ]
 
 export default function AdminSidebar() {
@@ -36,7 +37,6 @@ export default function AdminSidebar() {
           </div>
         </div>
       </div>
-
       <nav style={{ flex: 1, padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {nav.map(({ href, label, icon }) => {
           const active = pathname.startsWith(href)
@@ -54,7 +54,6 @@ export default function AdminSidebar() {
           )
         })}
       </nav>
-
       <div style={{ padding: '12px 10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <button onClick={logout} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'transparent', border: '1px solid transparent', cursor: 'pointer' }}
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.1)')}
