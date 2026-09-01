@@ -100,24 +100,56 @@ async function saveMsg(waId: string, kurumId: string, role: 'user' | 'assistant'
   await supabaseAdmin.from('wa_conversations').insert({ wa_id: waId, kurum_id: kurumId, role, content })
 }
 
+// Personel "kaydet" demeden önce gönderdiği fotoğraf — kaydetme anına kadar
+// hatırlanır ki geç gelen "kaydet" mesajında da doğru medya_url eklensin.
+async function savePendingMedia(waId: string, kurumId: string, url: string, mimeType: string) {
+  await supabaseAdmin.from('wa_conversations').insert({
+    wa_id: `pending_media_${waId}`,
+    kurum_id: kurumId,
+    role: 'assistant',
+    content: JSON.stringify({ type: 'pending_media', url, mimeType })
+  })
+}
+
+async function getPendingMedia(waId: string, kurumId: string): Promise<{ url: string; mimeType: string } | null> {
+  const { data } = await supabaseAdmin
+    .from('wa_conversations')
+    .select('content')
+    .eq('wa_id', `pending_media_${waId}`)
+    .eq('kurum_id', kurumId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (!data?.length) return null
+  try {
+    const parsed = JSON.parse(data[0].content)
+    if (parsed.type === 'pending_media') return { url: parsed.url, mimeType: parsed.mimeType }
+  } catch {}
+  return null
+}
+
+async function clearPendingMedia(waId: string, kurumId: string) {
+  await supabaseAdmin.from('wa_conversations').delete().eq('wa_id', `pending_media_${waId}`).eq('kurum_id', kurumId)
+}
+
 // ── PROMPT ─────────────────────────────────────────────────────────────────
 
 function getSystemPrompt(personel: any) {
   return `Sen bir tesis/etkinlik mekanının operasyon (bakım-onarım) asistanısın. Şu anda iç personel ${personel.ad}${personel.rol ? ` (${personel.rol})` : ''} ile konuşuyorsun. Bu bir misafir değil, personel — kısa, net ve iş odaklı yaz. Emoji kullanma.
 
 GÖREV:
-- Personelin YAZDIĞI metne göre arıza/bakım/temizlik sorununu kategorize et — fotoğraf gönderilmiş olsa bile görüntüyü yorumlama, sadece personelin kendi yazdığı açıklamayı ve konumu kullan
-- Mesajda BİRDEN FAZLA ayrı sorun varsa (örn: "lamba patladı ve tuvalet tıkandı") HER biri için AYRI save_operasyon_request çağır
+- Personelle normal sohbet et. Fotoğraf ve/veya sorun açıklaması geldiğinde bunları aklında tut ama HEMEN kayıt açma.
+- Personel "kaydet", "kayıt oluştur", "kayıt aç", "talep oluştur" gibi bir ifadeyle AÇIKÇA kaydetmeni istediğinde, o ana kadar konuşulan bilgilerle (varsa daha önce gönderilen fotoğraf, konum, açıklama) save_operasyon_request çağır
+- Kaydetme isteğinde birden fazla ayrı sorun varsa (örn: "lamba patladı ve tuvalet tıkandı, kaydet") HER biri için AYRI save_operasyon_request çağır
 - Kategori seç: Elektrik, Temizlik, Teknik, Diğer
 - Konum belirtilmişse (salon, oda, tuvalet no vb.) konum alanına yaz
-- Fotoğraf her zaman gelmeyebilir — bu normal, foto olmadan da mesaj metnine göre kaydet
+- aciklama alanına KENDİ yorumunu/tahminini ekleme — sadece personelin yazdıklarını özetle; fotoğraf gönderilmiş olsa bile görüntüyü yorumlama
 
 KESİN KURALLAR:
-- Her sorun için MUTLAKA save_operasyon_request çağır — tool çağırmadan "kaydettim" deme
-- aciklama alanına KENDİ yorumunu/tahminini ekleme — sadece personelin yazdıklarını özetle
+- Personel açıkça kaydetmeni istemeden save_operasyon_request ÇAĞIRMA — sadece bilgi topla, normal cevap ver
+- Kaydetmesi istendiğinde MUTLAKA çağır — çağırmadan "kaydettim" deme
 - Tüm kayıtlar oluşunca dönen kayıt numaralarıyla kısa bir onay mesajı yaz, örn:
-  "Kaydedildi: [kayit_no] — [kategori] — [konum]" (birden fazlaysa alt alta)
-- Netleştirme gerekmedikçe soru sorma, elindeki bilgiyle direkt kaydet`
+  "Kaydedildi: [kayit_no] — [kategori] — [konum]" (birden fazlaysa alt alta)`
 }
 
 // ── MAIN ───────────────────────────────────────────────────────────────────
@@ -143,6 +175,17 @@ export async function runOperasyonAgent(params: {
     if (media) {
       medyaTip = media.mimeType
       medyaUrl = await uploadOperasyonMedia(media.buffer, media.mimeType, kurum.id)
+      // "kaydet" mesajı daha sonra ayrı bir turda gelebilir — o zamana kadar hatırla
+      if (medyaUrl) await savePendingMedia(waId, kurum.id, medyaUrl, medyaTip)
+    }
+  }
+
+  // Bu turda yeni fotoğraf gelmediyse, daha önce bekleyen bir fotoğraf var mı bak
+  if (!medyaUrl) {
+    const pending = await getPendingMedia(waId, kurum.id)
+    if (pending) {
+      medyaUrl = pending.url
+      medyaTip = pending.mimeType
     }
   }
 
@@ -168,20 +211,19 @@ export async function runOperasyonAgent(params: {
         ? { ...t, cache_control: { type: 'ephemeral' } }
         : t
     ) as any,
-    // İlk turda tool çağrısı zorunlu — model "kaydettim" deyip gerçekte
-    // save_operasyon_request çağırmadan halüsinasyon yapmasın (fotoğraf o
-    // turda geldiyse medya_url de doğru turda kaydedilsin).
-    tool_choice: { type: 'any' }, messages
+    tool_choice: { type: 'auto' }, messages
   })
+
+  let kaydedildi = false
 
   while (response.stop_reason === 'tool_use') {
     const toolBlocks = response.content.filter(b => b.type === 'tool_use')
     const results: Anthropic.ToolResultBlockParam[] = await Promise.all(
-      toolBlocks.map(async (b: any) => ({
-        type: 'tool_result' as const,
-        tool_use_id: b.id,
-        content: await executeTool(b.name, b.input, kurum, personel, medyaUrl, medyaTip)
-      }))
+      toolBlocks.map(async (b: any) => {
+        const sonuc = await executeTool(b.name, b.input, kurum, personel, medyaUrl, medyaTip)
+        if (JSON.parse(sonuc)?.basarili) kaydedildi = true
+        return { type: 'tool_result' as const, tool_use_id: b.id, content: sonuc }
+      })
     )
     messages.push({ role: 'assistant', content: response.content })
     messages.push({ role: 'user', content: results })
@@ -201,6 +243,8 @@ export async function runOperasyonAgent(params: {
       tool_choice: { type: 'auto' }, messages
     })
   }
+
+  if (kaydedildi) await clearPendingMedia(waId, kurum.id)
 
   const finalText = response.content.filter(b => b.type === 'text').map((b: any) => b.text).join('')
   await saveMsg(waId, kurum.id, 'assistant', finalText)
