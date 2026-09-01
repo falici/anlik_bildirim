@@ -175,7 +175,10 @@ export async function runOperasyonAgent(params: {
         ? { ...t, cache_control: { type: 'ephemeral' } }
         : t
     ) as any,
-    tool_choice: { type: 'auto' }, messages
+    // İlk turda tool çağrısı zorunlu — model "kaydettim" deyip gerçekte
+    // save_operasyon_request çağırmadan halüsinasyon yapmasın (fotoğraf o
+    // turda geldiyse medya_url de doğru turda kaydedilsin).
+    tool_choice: { type: 'any' }, messages
   })
 
   while (response.stop_reason === 'tool_use') {
