@@ -389,7 +389,9 @@ export async function runWeddingAgent(params: {
 
   const history = await getHistory(waId, kurum.id, activeEventId)
   const greeting = kurum._greeting || 'keyifli bir akşam'
-  const systemPrompt = isBoss ? getBossPrompt(kurum) : getGuestPrompt(kurum, greeting)
+  const rawPrompt = isBoss ? getBossPrompt(kurum) : getGuestPrompt(kurum, greeting)
+  // DB'den gelen veya kod içindeki prompttaki ${greeting} placeholder'ını değiştir
+  const systemPrompt = rawPrompt.replace(/\$\{greeting\}/g, greeting).replace(/\[GREETING\]/g, greeting)
   const tools = isBoss ? managerTools : weddingTools
   const maxTokens = isBoss ? 1024 : 512
 
