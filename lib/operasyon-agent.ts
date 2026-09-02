@@ -2,9 +2,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from './supabase'
 import { getWhatsAppMedia } from './whatsapp'
 import { generateKayitNo } from './kayit-no'
+import { createMessage } from './anthropic-client'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 })
-const MODEL = 'claude-haiku-4-5-20251001'
 const BUCKET = 'operasyon-medya'
 
 // ── MEDYA ──────────────────────────────────────────────────────────────────
@@ -202,8 +201,8 @@ export async function runOperasyonAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message || '[Medya gönderildi]')
 
-  let response = await anthropic.messages.create({
-    model: MODEL, max_tokens: 512,
+  let response = await createMessage({
+    max_tokens: 512,
     system: [{
       type: 'text',
       text: systemPrompt,
@@ -231,8 +230,8 @@ export async function runOperasyonAgent(params: {
     messages.push({ role: 'assistant', content: response.content })
     messages.push({ role: 'user', content: results })
 
-    response = await anthropic.messages.create({
-      model: MODEL, max_tokens: 512,
+    response = await createMessage({
+      max_tokens: 512,
       system: [{
         type: 'text',
         text: systemPrompt,

@@ -2,11 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from './supabase'
 import { normalizePhone, sendWhatsAppMessage } from './whatsapp'
 import { generateKayitNo } from './kayit-no'
-
-// maxRetries: Anthropic API ara sıra 529 (overloaded) dönebiliyor —
-// SDK bunu zaten otomatik tekrar dener, sayıyı biraz artırıyoruz.
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 })
-const MODEL = 'claude-haiku-4-5-20251001'
+import { createMessage } from './anthropic-client'
 
 // ── KAPANIŞ BİLDİRİMİ ────────────────────────────────────────────────────────
 
@@ -20,8 +16,7 @@ export async function generateClosingMessage(params: {
 }): Promise<string> {
   const { kurumAd, kategoriler, digerNot, kapatanNot } = params
 
-  const response = await anthropic.messages.create({
-    model: MODEL,
+  const response = await createMessage({
     max_tokens: 200,
     system: `Sen ${kurumAd} adına misafire kapanış bilgilendirme mesajı yazan bir asistansın. Personelin kısa notundan yola çıkarak kısa, sıcak, kurumsal bir WhatsApp mesajı yaz. Yapay zeka olduğunu belirtme, tekrar etme. En fazla 1-2 emoji kullan. Sadece mesaj metnini yaz, başka açıklama ekleme.`,
     messages: [{
@@ -467,16 +462,16 @@ export async function runWeddingAgent(params: {
   // (Boss için read_pending'i zorlar; misafir için read_guest_history'yi.)
   const firstToolChoice = { type: 'any' as const }
 
-  let response = await anthropic.messages.create({
-    model: MODEL, max_tokens: maxTokens,
-    system: [{ 
-      type: 'text', 
+  let response = await createMessage({
+    max_tokens: maxTokens,
+    system: [{
+      type: 'text',
       text: systemPrompt,
       cache_control: { type: 'ephemeral' }
     }] as any,
-    tools: tools.map((t, i) => 
-      i === tools.length - 1 
-        ? { ...t, cache_control: { type: 'ephemeral' } } 
+    tools: tools.map((t, i) =>
+      i === tools.length - 1
+        ? { ...t, cache_control: { type: 'ephemeral' } }
         : t
     ) as any,
     tool_choice: firstToolChoice, messages
@@ -494,16 +489,16 @@ export async function runWeddingAgent(params: {
     messages.push({ role: 'assistant', content: response.content })
     messages.push({ role: 'user', content: results })
 
-    response = await anthropic.messages.create({
-      model: MODEL, max_tokens: maxTokens,
-      system: [{ 
-        type: 'text', 
+    response = await createMessage({
+      max_tokens: maxTokens,
+      system: [{
+        type: 'text',
         text: systemPrompt,
         cache_control: { type: 'ephemeral' }
       }] as any,
-      tools: tools.map((t, i) => 
-        i === tools.length - 1 
-          ? { ...t, cache_control: { type: 'ephemeral' } } 
+      tools: tools.map((t, i) =>
+        i === tools.length - 1
+          ? { ...t, cache_control: { type: 'ephemeral' } }
           : t
       ) as any,
       tool_choice: { type: 'auto' }, messages
