@@ -6,6 +6,31 @@ import { generateKayitNo } from './kayit-no'
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const MODEL = 'claude-haiku-4-5-20251001'
 
+// ── KAPANIŞ BİLDİRİMİ ────────────────────────────────────────────────────────
+
+// Admin panelden bir kaydı kapatırken girilen elle-yazılmış notu, misafire
+// gönderilecek kısa ve şık bir WhatsApp mesajına dönüştürür.
+export async function generateClosingMessage(params: {
+  kurumAd: string
+  kategoriler: string[]
+  digerNot?: string | null
+  kapatanNot: string
+}): Promise<string> {
+  const { kurumAd, kategoriler, digerNot, kapatanNot } = params
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 200,
+    system: `Sen ${kurumAd} adına misafire kapanış bilgilendirme mesajı yazan bir asistansın. Personelin kısa notundan yola çıkarak kısa, sıcak, kurumsal bir WhatsApp mesajı yaz. Yapay zeka olduğunu belirtme, tekrar etme. En fazla 1-2 emoji kullan. Sadece mesaj metnini yaz, başka açıklama ekleme.`,
+    messages: [{
+      role: 'user',
+      content: `Talep: ${kategoriler.join(', ') || 'Genel'}${digerNot ? ` (${digerNot})` : ''}\nPersonel notu: ${kapatanNot}\n\nBu bilgiyle misafire kısa bir kapanış/bilgilendirme mesajı yaz.`
+    }]
+  })
+
+  return response.content.filter(b => b.type === 'text').map((b: any) => b.text).join('').trim()
+}
+
 // ── KAYIT NO ───────────────────────────────────────────────────────────────
 
 

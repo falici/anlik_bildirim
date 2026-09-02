@@ -35,6 +35,7 @@ export default function BildirimlerPage() {
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [kapatanNot, setKapatanNot] = useState<Record<string, string>>({})
   const [showNotInput, setShowNotInput] = useState<string | null>(null)
+  const [bilgilendir, setBilgilendir] = useState(true)
 
   const load = useCallback(async () => {
     const params = new URLSearchParams()
@@ -53,13 +54,14 @@ export default function BildirimlerPage() {
 
   const toggleDurum = async (b: Bildirim) => {
     const yeniDurum = b.durum === 'acik' ? 'kapali' : 'acik'
-    
+
     // Kapatılıyorsa not iste
     if (yeniDurum === 'kapali') {
       setShowNotInput(b.id)
+      setBilgilendir(true)
       return
     }
-    
+
     setUpdating(b.id)
     await fetch('/api/admin/bildirimler', {
       method: 'PUT',
@@ -75,7 +77,7 @@ export default function BildirimlerPage() {
     await fetch('/api/admin/bildirimler', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: b.id, durum: 'kapali', kapatan_not: kapatanNot[b.id] || null })
+      body: JSON.stringify({ id: b.id, durum: 'kapali', kapatan_not: kapatanNot[b.id] || null, bilgilendir })
     })
     setUpdating(null)
     setShowNotInput(null)
@@ -89,7 +91,7 @@ export default function BildirimlerPage() {
   const selectStyle = { border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '8px 14px', fontSize: 13, color: '#374151', outline: 'none', background: '#fff', cursor: 'pointer' }
 
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div style={{ maxWidth: 1400 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
@@ -118,7 +120,7 @@ export default function BildirimlerPage() {
       </div>
 
       {/* Özet */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24, maxWidth: 500 }}>
         <div style={{ background: '#fff', border: '1px solid #ede9f8', borderRadius: 16, padding: '18px 20px' }}>
           <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Açık</p>
           <p style={{ fontSize: 32, fontWeight: 800, color: '#dc2626' }}>{acik}</p>
@@ -153,114 +155,115 @@ export default function BildirimlerPage() {
           </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
           {bildirimler.map(b => (
-            <div key={b.id} style={{ background: '#fff', border: `1px solid ${b.durum === 'acik' ? '#fecaca' : '#bbf7d0'}`, borderRadius: 16, padding: '18px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Üst — kayıt no + durum + kurum + saat */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                    {b.kayit_no && (
-                      <span style={{ background: '#f0eeff', color: '#6d28d9', fontSize: 12, fontWeight: 800, padding: '3px 10px', borderRadius: 20, fontFamily: 'monospace' }}>
-                        {b.kayit_no}
-                      </span>
-                    )}
-                    <span style={{ background: b.durum === 'acik' ? '#fef2f2' : '#f0fdf4', color: b.durum === 'acik' ? '#dc2626' : '#16a34a', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20 }}>
-                      {b.durum === 'acik' ? '● Açık' : '✓ Kapalı'}
-                    </span>
-                    <span style={{ fontSize: 12, color: '#9ca3af' }}>🏢 {b.kurum?.ad}</span>
-                    {b.event?.ad && <span style={{ fontSize: 12, color: '#9ca3af' }}>📅 {b.event.ad}</span>}
-                    <span style={{ fontSize: 11, color: '#d1d5db', marginLeft: 'auto' }}>{formatDate(b.olusturulma)}</span>
-                  </div>
+            <div key={b.id} style={{
+              background: '#fff', border: `1px solid ${b.durum === 'acik' ? '#fecaca' : '#bbf7d0'}`,
+              borderRadius: 16, padding: '16px', display: 'flex', flexDirection: 'column', gap: 8
+            }}>
+              {/* Üst — kayıt no + durum + saat */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {b.kayit_no && (
+                  <span style={{ background: '#f0eeff', color: '#6d28d9', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, fontFamily: 'monospace' }}>
+                    {b.kayit_no}
+                  </span>
+                )}
+                <span style={{ background: b.durum === 'acik' ? '#fef2f2' : '#f0fdf4', color: b.durum === 'acik' ? '#dc2626' : '#16a34a', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
+                  {b.durum === 'acik' ? '● Açık' : '✓ Kapalı'}
+                </span>
+                <span style={{ fontSize: 10, color: '#d1d5db', marginLeft: 'auto' }}>{formatDate(b.olusturulma)}</span>
+              </div>
 
-                  {/* Kategoriler */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {b.kategoriler.map(k => (
-                      <span key={k} style={{ background: '#f0eeff', color: '#6d28d9', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20 }}>{k}</span>
-                    ))}
-                  </div>
+              {/* Kurum / etkinlik */}
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                🏢 {b.kurum?.ad}{b.event?.ad ? ` · 📅 ${b.event.ad}` : ''}
+              </div>
 
-                  {/* Misafir notu */}
-                  {b.diger_not && (
-                    <div style={{ background: '#f8f7ff', border: '1px solid #ede9f8', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
-                      <p style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>"{b.diger_not}"</p>
-                    </div>
-                  )}
+              {/* Kategoriler */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {b.kategoriler.map(k => (
+                  <span key={k} style={{ background: '#f0eeff', color: '#6d28d9', fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 20 }}>{k}</span>
+                ))}
+              </div>
 
-                  {/* Sonradan eklenen ek açıklama */}
-                  {b.ek_aciklama && (
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
-                      <p style={{ fontSize: 11, color: '#92400e', fontWeight: 600, marginBottom: 2 }}>Ek Açıklama:</p>
-                      <p style={{ fontSize: 12, color: '#78350f', whiteSpace: 'pre-line' }}>{b.ek_aciklama}</p>
-                    </div>
-                  )}
+              {/* Misafir notu */}
+              {b.diger_not && (
+                <div style={{ background: '#f8f7ff', border: '1px solid #ede9f8', borderRadius: 10, padding: '7px 10px' }}>
+                  <p style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>&quot;{b.diger_not}&quot;</p>
+                </div>
+              )}
 
-                  {/* Operasyon fotoğrafı */}
-                  {b.medya_url && b.medya_tip?.startsWith('image/') && (
-                    <a href={b.medya_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginBottom: 8 }}>
-                      <img src={b.medya_url} alt="Talep fotoğrafı" style={{ maxWidth: 160, maxHeight: 120, borderRadius: 10, border: '1px solid #ede9f8', objectFit: 'cover' }} />
-                    </a>
-                  )}
-                  {b.medya_url && !b.medya_tip?.startsWith('image/') && (
-                    <a href={b.medya_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#6d28d9', display: 'block', marginBottom: 8 }}>
-                      📎 Ekli dosyayı görüntüle
-                    </a>
-                  )}
+              {/* Sonradan eklenen ek açıklama */}
+              {b.ek_aciklama && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '7px 10px' }}>
+                  <p style={{ fontSize: 10, color: '#92400e', fontWeight: 600, marginBottom: 2 }}>Ek Açıklama:</p>
+                  <p style={{ fontSize: 12, color: '#78350f', whiteSpace: 'pre-line' }}>{b.ek_aciklama}</p>
+                </div>
+              )}
 
-                  {/* Kapatan notu */}
-                  {b.kapatan_not && (
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
-                      <p style={{ fontSize: 11, color: '#15803d', fontWeight: 600, marginBottom: 2 }}>Çözüm Notu:</p>
-                      <p style={{ fontSize: 12, color: '#166534' }}>{b.kapatan_not}</p>
-                    </div>
-                  )}
+              {/* Operasyon fotoğrafı */}
+              {b.medya_url && b.medya_tip?.startsWith('image/') && (
+                <a href={b.medya_url} target="_blank" rel="noopener noreferrer">
+                  <img src={b.medya_url} alt="Talep fotoğrafı" style={{ width: '100%', maxHeight: 140, borderRadius: 10, border: '1px solid #ede9f8', objectFit: 'cover' }} />
+                </a>
+              )}
+              {b.medya_url && !b.medya_tip?.startsWith('image/') && (
+                <a href={b.medya_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#6d28d9' }}>
+                  📎 Ekli dosyayı görüntüle
+                </a>
+              )}
 
-                  {/* Not input — kapanırken */}
-                  {showNotInput === b.id && (
-                    <div style={{ marginBottom: 8 }}>
-                      <textarea
-                        value={kapatanNot[b.id] || ''}
-                        onChange={e => setKapatanNot(prev => ({ ...prev, [b.id]: e.target.value }))}
-                        placeholder="Çözüm notu ekle (isteğe bağlı)..."
-                        rows={2}
-                        autoFocus
-                        style={{ width: '100%', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '8px 12px', fontSize: 13, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                      />
-                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                        <button onClick={() => { setShowNotInput(null) }}
-                          style={{ flex: 1, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 600, color: '#6b7280', cursor: 'pointer', background: '#fff' }}>
-                          İptal
-                        </button>
-                        <button onClick={() => kapat(b)} disabled={updating === b.id}
-                          style={{ flex: 2, background: '#16a34a', border: 'none', borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
-                          {updating === b.id ? 'Kapatılıyor...' : '✓ Kapat'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              {/* Kapatan notu */}
+              {b.kapatan_not && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '7px 10px' }}>
+                  <p style={{ fontSize: 10, color: '#15803d', fontWeight: 600, marginBottom: 2 }}>Çözüm Notu:</p>
+                  <p style={{ fontSize: 12, color: '#166534' }}>{b.kapatan_not}</p>
+                </div>
+              )}
 
-                  {/* Alt — telefon */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 600 }}>📞 {b.telefon}</span>
+              {/* Telefon */}
+              <p style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>📞 {b.telefon}</p>
+
+              {/* Not input — kapanırken */}
+              {showNotInput === b.id ? (
+                <div>
+                  <textarea
+                    value={kapatanNot[b.id] || ''}
+                    onChange={e => setKapatanNot(prev => ({ ...prev, [b.id]: e.target.value }))}
+                    placeholder="Çözüm notu ekle (isteğe bağlı)..."
+                    rows={2}
+                    autoFocus
+                    style={{ width: '100%', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '8px 12px', fontSize: 13, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#374151', margin: '8px 0' }}>
+                    <input type="checkbox" checked={bilgilendir} onChange={e => setBilgilendir(e.target.checked)} />
+                    Müşteriye WhatsApp&apos;tan bilgilendirme gönder
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => setShowNotInput(null)}
+                      style={{ flex: 1, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 600, color: '#6b7280', cursor: 'pointer', background: '#fff' }}>
+                      İptal
+                    </button>
+                    <button onClick={() => kapat(b)} disabled={updating === b.id}
+                      style={{ flex: 2, background: '#16a34a', border: 'none', borderRadius: 8, padding: '7px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                      {updating === b.id ? 'Kapatılıyor...' : '✓ Kapat'}
+                    </button>
                   </div>
                 </div>
-
-                {/* Aksiyon butonu */}
-                {showNotInput !== b.id && (
-                  <button onClick={() => toggleDurum(b)} disabled={updating === b.id}
-                    style={{
-                      flexShrink: 0,
-                      background: b.durum === 'acik' ? '#f0fdf4' : '#fef2f2',
-                      color: b.durum === 'acik' ? '#16a34a' : '#dc2626',
-                      border: `1.5px solid ${b.durum === 'acik' ? '#bbf7d0' : '#fecaca'}`,
-                      borderRadius: 10, padding: '9px 14px', fontSize: 12, fontWeight: 700,
-                      cursor: updating === b.id ? 'not-allowed' : 'pointer',
-                      opacity: updating === b.id ? 0.6 : 1, whiteSpace: 'nowrap'
-                    }}>
-                    {updating === b.id ? '...' : b.durum === 'acik' ? '✓ Kapat' : '↩ Aç'}
-                  </button>
-                )}
-              </div>
+              ) : (
+                <button onClick={() => toggleDurum(b)} disabled={updating === b.id}
+                  style={{
+                    width: '100%',
+                    background: b.durum === 'acik' ? '#f0fdf4' : '#fef2f2',
+                    color: b.durum === 'acik' ? '#16a34a' : '#dc2626',
+                    border: `1.5px solid ${b.durum === 'acik' ? '#bbf7d0' : '#fecaca'}`,
+                    borderRadius: 10, padding: '9px 14px', fontSize: 12, fontWeight: 700,
+                    cursor: updating === b.id ? 'not-allowed' : 'pointer',
+                    opacity: updating === b.id ? 0.6 : 1
+                  }}>
+                  {updating === b.id ? '...' : b.durum === 'acik' ? '✓ Kapat' : '↩ Aç'}
+                </button>
+              )}
             </div>
           ))}
         </div>
