@@ -424,10 +424,10 @@ export async function runWeddingAgent(params: {
 
   await saveMsg(waId, kurum.id, 'user', message, activeEventId)
 
-  // Boss ilk mesajda read_pending'i zorla — "bekleyen yok" hatasını önle
-  const firstToolChoice = isBoss 
-    ? { type: 'any' as const }
-    : { type: 'auto' as const }
+  // İlk turda tool çağrısı zorunlu — model gerçekte hiçbir tool çağırmadan
+  // "kaydettim / güncelledim" gibi bir cevap üretip halüsinasyon yapmasın.
+  // (Boss için read_pending'i zorlar; misafir için read_guest_history'yi.)
+  const firstToolChoice = { type: 'any' as const }
 
   let response = await anthropic.messages.create({
     model: MODEL, max_tokens: maxTokens,

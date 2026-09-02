@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
       whatsapp_id: null,      // webhook'tan gelecek gerçek WA from
       kategoriler,
       diger_not: diger_not?.trim() || null,
+      durum: 'acik',
       kayit_no: kayitNo
     })
     .select()
