@@ -10,6 +10,7 @@ interface Bildirim {
   telefon: string
   kategoriler: string[]
   diger_not?: string
+  ek_aciklama?: string
   kapatan_not?: string
   durum: 'acik' | 'kapali'
   tip?: 'misafir' | 'operasyon'
@@ -183,6 +184,14 @@ export default function BildirimlerPage() {
                   {b.diger_not && (
                     <div style={{ background: '#f8f7ff', border: '1px solid #ede9f8', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
                       <p style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>"{b.diger_not}"</p>
+                    </div>
+                  )}
+
+                  {/* Sonradan eklenen ek açıklama */}
+                  {b.ek_aciklama && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginBottom: 8 }}>
+                      <p style={{ fontSize: 11, color: '#92400e', fontWeight: 600, marginBottom: 2 }}>Ek Açıklama:</p>
+                      <p style={{ fontSize: 12, color: '#78350f', whiteSpace: 'pre-line' }}>{b.ek_aciklama}</p>
                     </div>
                   )}
 

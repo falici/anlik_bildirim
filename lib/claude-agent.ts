@@ -168,7 +168,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
         const waShort = waId.replace(/^90/, '')
         const { data } = await supabaseAdmin
           .from('form_gonderimleri')
-          .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
+          .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, ek_aciklama, durum, olusturulma, event:events(ad)')
           .eq('kurum_id', kurum.id)
           .or(`telefon.eq.${waId},telefon.eq.${waShort},telefon.eq.0${waShort},whatsapp_id.eq.${waId},whatsapp_id.eq.${waShort}`)
           .order('olusturulma', { ascending: false }).limit(5)
@@ -213,7 +213,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
       case 'read_pending': {
         const { data } = await supabaseAdmin
           .from('form_gonderimleri')
-          .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, durum, olusturulma, event:events(ad)')
+          .select('id, kayit_no, telefon, whatsapp_id, kategoriler, diger_not, ek_aciklama, durum, olusturulma, event:events(ad)')
           .eq('kurum_id', kurum.id)
           .eq('durum', 'acik')
           .order('olusturulma', { ascending: false })
@@ -232,7 +232,8 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           telefon: row.whatsapp_id || row.telefon,
           konu: (row.kategoriler || []).join(', '),
           not: row.diger_not || '',
-          saat: new Date(new Date(row.olusturulma).getTime() + 3 * 60 * 60 * 1000).toLocaleString('tr-TR', { 
+          ek_not: row.ek_aciklama || '',
+          saat: new Date(new Date(row.olusturulma).getTime() + 3 * 60 * 60 * 1000).toLocaleString('tr-TR', {
             day: '2-digit', month: '2-digit', year: 'numeric',
             hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
           }),
@@ -302,7 +303,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           // Kayıt no varsa direkt ara
           const { data } = await supabaseAdmin
             .from('form_gonderimleri')
-            .select('id, diger_not')
+            .select('id, kayit_no, diger_not, ek_aciklama')
             .eq('kayit_no', input.kayit_no)
             .eq('kurum_id', kurum.id)
             .single()
@@ -314,7 +315,7 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
           const waShort = waId.replace(/^90/, '')
           const { data } = await supabaseAdmin
             .from('form_gonderimleri')
-            .select('id, kayit_no, diger_not')
+            .select('id, kayit_no, diger_not, ek_aciklama')
             .eq('kurum_id', kurum.id)
             .eq('durum', 'acik')
             .or(`telefon.eq.${waId},telefon.eq.${waShort},whatsapp_id.eq.${waId}`)
@@ -326,20 +327,30 @@ async function executeTool(toolName: string, input: any, kurum: any, waId: strin
 
         if (!found) return JSON.stringify({ hata: 'Güncellenecek açık kayıt bulunamadı' })
 
-        const notParts = [
-          input.masa_no ? `Masa: ${input.masa_no}` : '',
-          input.ad_soyad || '',
-          input.not || ''
+        // diger_not (ilk talep bilgisi) ÜZERİNE YAZILMAZ — sadece eksikse
+        // masa/ad eklenir. Sonradan gelen detaylar ek_aciklama'ya EKLENİR.
+        const update: Record<string, any> = { guncelleme: new Date().toISOString() }
+
+        const eksikParcalar = [
+          input.masa_no && !found.diger_not?.includes('Masa:') ? `Masa: ${input.masa_no}` : '',
+          input.ad_soyad && !found.diger_not?.includes(input.ad_soyad) ? input.ad_soyad : ''
         ].filter(Boolean)
+        if (eksikParcalar.length) {
+          update.diger_not = [found.diger_not, ...eksikParcalar].filter(Boolean).join(' | ')
+        }
+
+        if (input.not) {
+          update.ek_aciklama = [found.ek_aciklama, input.not].filter(Boolean).join('\n')
+        }
 
         const { data, error } = await supabaseAdmin
           .from('form_gonderimleri')
-          .update({ diger_not: notParts.join(' | '), guncelleme: new Date().toISOString() })
+          .update(update)
           .eq('id', found.id)
           .select().single()
 
         if (error) return JSON.stringify({ hata: error.message })
-        return JSON.stringify({ basarili: true, kayit_no: input.kayit_no })
+        return JSON.stringify({ basarili: true, kayit_no: found.kayit_no, guncel_not: data.diger_not, guncel_ek_aciklama: data.ek_aciklama })
       }
 
       case 'read_request_detail': {
