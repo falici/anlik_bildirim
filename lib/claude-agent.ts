@@ -3,7 +3,9 @@ import { supabaseAdmin } from './supabase'
 import { normalizePhone, sendWhatsAppMessage } from './whatsapp'
 import { generateKayitNo } from './kayit-no'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+// maxRetries: Anthropic API ara sıra 529 (overloaded) dönebiliyor —
+// SDK bunu zaten otomatik tekrar dener, sayıyı biraz artırıyoruz.
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 })
 const MODEL = 'claude-haiku-4-5-20251001'
 
 // ── KAPANIŞ BİLDİRİMİ ────────────────────────────────────────────────────────

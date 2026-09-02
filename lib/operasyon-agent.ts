@@ -3,7 +3,7 @@ import { supabaseAdmin } from './supabase'
 import { getWhatsAppMedia } from './whatsapp'
 import { generateKayitNo } from './kayit-no'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 4 })
 const MODEL = 'claude-haiku-4-5-20251001'
 const BUCKET = 'operasyon-medya'
 
