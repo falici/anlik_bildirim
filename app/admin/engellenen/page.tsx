@@ -65,7 +65,7 @@ export default function EngellenenPage() {
       {/* Yeni engel ekle */}
       <div style={{ background: '#fff', border: '1px solid #ede9f8', borderRadius: 16, padding: 24, marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f0a1e', marginBottom: 16 }}>Numara Engelle</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div className="grid-cols-1 sm:grid-cols-2" style={{ display: 'grid', gap: 14, marginBottom: 14 }}>
           <div>
             <label style={s.label}>Kurum *</label>
             <select value={form.kurum_id} onChange={e => setForm({ ...form, kurum_id: e.target.value })}
