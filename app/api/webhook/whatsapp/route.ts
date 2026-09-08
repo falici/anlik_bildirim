@@ -94,10 +94,18 @@ export async function POST(req: NextRequest) {
 
   const phoneNumberId: string = msg.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || ''
 
-  // Kurumu bul
+  // Kurumu bul — phone_number_id hiçbir kuruma kayıtlı değilse mesajı YOK SAY.
+  // Aynı Meta App'e bağlı tüm numaraların webhook'u bu endpoint'e düştüğü için
+  // (Meta webhook'u numara değil app bazlı çalışır) burada asla rastgele bir
+  // kuruma (örn. kurumlar[0]) fallback YAPMIYORUZ — aksi halde kayıtsız/başka
+  // bir numaraya gelen mesajlar yanlışlıkla ilk kurumun AI'ına düşer.
   const { data: kurumlar } = await supabaseAdmin.from('kurumlar').select('*').eq('aktif', true)
   if (!kurumlar?.length) return NextResponse.json({ status: 'no active venue' })
-  const kurum = kurumlar.find((k: any) => k.wa_phone_number_id === phoneNumberId) || kurumlar[0]
+  const kurum = kurumlar.find((k: any) => k.wa_phone_number_id === phoneNumberId)
+  if (!kurum) {
+    console.log('Kayıtsız phone_number_id, mesaj yok sayıldı:', phoneNumberId)
+    return NextResponse.json({ status: 'unregistered phone number' })
+  }
 
   // wa_id çöz
   const resolvedWaId = resolveWaId(msg.from, messageText)
